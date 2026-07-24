@@ -391,6 +391,8 @@ kbd { min-width: 18px; padding: 3px 5px; border: 1px solid rgba(255,255,255,.1);
 /* Dialogs and drawers */
 dialog { color: var(--text); }
 dialog::backdrop { background: rgba(1,4,8,.72); backdrop-filter: blur(6px); }
+body.has-fallback-modal::before { content: ""; position: fixed; z-index: 110; inset: 0; background: rgba(1,4,8,.72); backdrop-filter: blur(6px); }
+dialog[data-fallback-modal="true"][open] { position: fixed; z-index: 120; inset: 0; }
 .event-dialog { width: min(570px,calc(100vw - 28px)); max-height: calc(100dvh - 28px); margin: auto; padding: 0; overflow: auto; border: 1px solid var(--line-strong); border-radius: 19px; background: #101722; box-shadow: 0 35px 100px rgba(0,0,0,.7); }
 .event-dialog form { padding: 20px; }
 .dialog-header,.drawer-head { display: flex; align-items: flex-start; justify-content: space-between; }

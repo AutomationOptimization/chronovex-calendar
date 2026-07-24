@@ -18,7 +18,14 @@ test("GitHub Pages artifact contains every required entry point", async () => {
 
 test("browser assets use repository-relative URLs", async () => {
   const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
-  assert.match(html, /href="\.\/styles\.css"/);
-  assert.match(html, /src="\.\/app\.js"/);
+  assert.match(html, /href="\.\/styles\.css\?v=\d+"/);
+  assert.match(html, /src="\.\/app\.js\?v=\d+"/);
   assert.doesNotMatch(html, /(?:href|src)="\/(?!\/)/);
+});
+
+test("interaction routing does not treat root theme state as a clicked control", async () => {
+  const app = await readFile(new URL("../app.js", import.meta.url), "utf8");
+  assert.doesNotMatch(app, /closest\('\[data-(?:accent|density)\]'\)/);
+  assert.match(app, /closest\('#accent-options \[data-accent\]'\)/);
+  assert.match(app, /closest\('#density-control \[data-density\]'\)/);
 });

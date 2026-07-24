@@ -382,11 +382,30 @@ function openEventDialog(event = null, prefill = {}) {
   $$('.constraint-option').forEach((button) => button.classList.toggle('is-active', button.dataset.flex === $('#event-form').dataset.flex));
   $('#delete-event').hidden = !event;
   updateEventColor();
-  $('#event-dialog').showModal();
+  openModal($('#event-dialog'));
   setTimeout(() => $('#event-title').focus(),60);
 }
 
 function updateEventColor() { $('#event-color-dot').style.background = calendarById($('#event-calendar').value).color; }
+
+function openModal(dialog) {
+  if (!dialog) return;
+  if (typeof dialog.showModal === 'function') {
+    if (!dialog.open) dialog.showModal();
+    return;
+  }
+  dialog.setAttribute('open','');
+  dialog.dataset.fallbackModal = 'true';
+  document.body.classList.add('has-fallback-modal');
+}
+
+function closeModal(dialog) {
+  if (!dialog) return;
+  if (typeof dialog.close === 'function') dialog.close();
+  else dialog.removeAttribute('open');
+  delete dialog.dataset.fallbackModal;
+  if (!document.querySelector('dialog[data-fallback-modal="true"]')) document.body.classList.remove('has-fallback-modal');
+}
 
 function saveEvent(form) {
   const data = new FormData(form);
@@ -397,7 +416,7 @@ function saveEvent(form) {
   const index = state.events.findIndex((item) => item.id === editingId);
   if (index >= 0) state.events[index] = event; else state.events.push(event);
   state.selectedDate = event.date; state.cursorDate = event.date; state.reflow = null;
-  saveState(); $('#event-dialog').close(); render();
+  saveState(); closeModal($('#event-dialog')); render();
   toast(index >= 0 ? 'Moment updated' : 'Moment created', `${longDate(event.date)} · ${formatClock(event.start)}`);
 }
 
@@ -405,7 +424,7 @@ function deleteEvent() {
   const event = state.events.find((item) => item.id === editingId); if (!event) return;
   previousEvents = structuredClone(state.events);
   state.events = state.events.filter((item) => item.id !== editingId);
-  saveState(); $('#event-dialog').close(); render();
+  saveState(); closeModal($('#event-dialog')); render();
   toast('Moment released', event.title, { id:'undo-delete', label:'Undo', run:()=>{ state.events=previousEvents; saveState(); render(); } });
 }
 
@@ -491,7 +510,7 @@ function runCommand() {
 }
 
 function openSearch(query='') {
-  $('#search-dialog').showModal(); $('#global-search').value=query; renderSearch(query); setTimeout(()=>$('#global-search').focus(),40);
+  openModal($('#search-dialog')); $('#global-search').value=query; renderSearch(query); setTimeout(()=>$('#global-search').focus(),40);
 }
 
 function renderSearch(query='') {
@@ -542,7 +561,7 @@ function handleAction(action, element) {
       const id=element.dataset.calendar; state.hiddenCalendars=state.hiddenCalendars.includes(id)?state.hiddenCalendars.filter((item)=>item!==id):[...state.hiddenCalendars,id]; saveState(); render(); break;
     }
     case 'open-search': openSearch(); break;
-    case 'close-dialog': $('#event-dialog').close(); break;
+    case 'close-dialog': closeModal($('#event-dialog')); break;
     case 'delete-event': deleteEvent(); break;
     case 'preview-reflow': previewReflow(); break;
     case 'cancel-reflow': state.reflow=null; render(); break;
@@ -569,17 +588,17 @@ function handleAction(action, element) {
     case 'new-calendar': toast('Calendar palette','Use Create to choose from Work, Studio, Focus, Life, or Rituals.'); break;
     case 'reset-demo': state=structuredClone(defaults); saveState(); closeDrawers(); populateEventCalendars(); render(); toast('Demo calendar restored','Your original Chronovex canvas is back.'); break;
     case 'search-open-event': {
-      $('#search-dialog').close(); const event=state.events.find((item)=>item.id===element.dataset.eventId); if(event) openEventDialog(event); break;
+      closeModal($('#search-dialog')); const event=state.events.find((item)=>item.id===element.dataset.eventId); if(event) openEventDialog(event); break;
     }
-    case 'search-command': $('#search-dialog').close(); handleAction(element.dataset.command,element); break;
+    case 'search-command': closeModal($('#search-dialog')); handleAction(element.dataset.command,element); break;
     case 'view-week': setView('week'); break;
   }
 }
 
 document.addEventListener('click',(event)=>{
   const viewButton=event.target.closest('[data-view]'); if(viewButton){ setView(viewButton.dataset.view); return; }
-  const accent=event.target.closest('[data-accent]'); if(accent){ state.settings.accent=accent.dataset.accent; saveState(); applySettings(); render(); return; }
-  const density=event.target.closest('[data-density]'); if(density){ state.settings.density=density.dataset.density; saveState(); applySettings(); render(); return; }
+  const accent=event.target.closest('#accent-options [data-accent]'); if(accent){ state.settings.accent=accent.dataset.accent; saveState(); applySettings(); render(); return; }
+  const density=event.target.closest('#density-control [data-density]'); if(density){ state.settings.density=density.dataset.density; saveState(); applySettings(); render(); return; }
   const lens=event.target.closest('[data-lens]'); if(lens){ const id=lens.dataset.lens; state.lenses[id]=!state.lenses[id]; saveState(); render(); return; }
   const action=event.target.closest('[data-action]'); if(action) handleAction(action.dataset.action,action);
 });
@@ -609,7 +628,7 @@ document.addEventListener('drop',(event)=>{
 document.addEventListener('keydown',(event)=>{
   const typing=['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName);
   if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='k'){event.preventDefault();openSearch();return;}
-  if(event.key==='Escape'){ closeDrawers(); if($('#search-dialog').open) $('#search-dialog').close(); if($('.focus-overlay')) stopFocus(false); }
+  if(event.key==='Escape'){ closeDrawers(); if($('#search-dialog').hasAttribute('open')) closeModal($('#search-dialog')); if($('#event-dialog').hasAttribute('open')) closeModal($('#event-dialog')); if($('.focus-overlay')) stopFocus(false); }
   if(!typing && event.key.toLowerCase()==='c'){ event.preventDefault(); openEventDialog(); }
   if(!typing && event.key.toLowerCase()==='t'){ event.preventDefault(); goToday(); }
   if(!typing && event.key.toLowerCase()==='r'){ event.preventDefault(); previewReflow(); }
