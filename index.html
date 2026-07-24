@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#080b12" />
+    <meta
+      name="description"
+      content="Chronovex — an adaptive, intelligent calendar where time is editable material."
+    />
+    <title>Chronovex — Time, made alive</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell" id="app">
+      <aside class="nav-rail" aria-label="Primary navigation">
+        <button class="brand-mark" data-action="today" aria-label="Chronovex home">
+          <span class="brand-orbit"></span>
+          <span class="brand-core"></span>
+        </button>
+
+        <nav class="rail-nav">
+          <button class="rail-button" data-action="focus-mode" data-tooltip="Now" aria-label="Now">
+            <span data-icon="sun"></span>
+          </button>
+          <button class="rail-button is-active" data-action="view-week" data-tooltip="Canvas" aria-label="Canvas">
+            <span data-icon="calendar"></span>
+          </button>
+          <button class="rail-button" data-action="open-orbit" data-tooltip="Rhythms" aria-label="Rhythms">
+            <span data-icon="orbit"></span>
+          </button>
+          <button class="rail-button" data-action="share-availability" data-tooltip="People" aria-label="People">
+            <span data-icon="users"></span>
+          </button>
+          <button class="rail-button" data-action="open-automations" data-tooltip="Automations" aria-label="Automations">
+            <span data-icon="bolt"></span>
+          </button>
+        </nav>
+
+        <div class="rail-bottom">
+          <button class="rail-button" data-action="open-settings" data-tooltip="Tune" aria-label="Settings">
+            <span data-icon="sliders"></span>
+          </button>
+          <button class="avatar-button" data-action="profile" aria-label="Profile">KC</button>
+        </div>
+      </aside>
+
+      <aside class="sidebar" id="sidebar" aria-label="Calendar navigation">
+        <div class="wordmark-wrap">
+          <div class="wordmark">CHRONOVEX</div>
+          <span class="signal-dot" title="All systems fluid"></span>
+        </div>
+
+        <section class="mini-calendar" id="mini-calendar" aria-label="Mini calendar"></section>
+
+        <section class="side-section">
+          <div class="side-heading-row">
+            <h2>My calendars</h2>
+            <button class="icon-button small" data-action="new-calendar" aria-label="Add calendar">
+              <span data-icon="plus"></span>
+            </button>
+          </div>
+          <div class="calendar-list" id="calendar-list"></div>
+        </section>
+
+        <section class="side-section lens-section">
+          <div class="side-heading-row">
+            <h2>Lenses</h2>
+            <span class="beta-label">LIVE</span>
+          </div>
+          <div class="lens-list">
+            <button class="lens-row is-on" data-lens="energy">
+              <span class="lens-icon energy"><span data-icon="wave"></span></span>
+              <span>Energy field</span>
+              <span class="toggle is-on" aria-hidden="true"></span>
+            </button>
+            <button class="lens-row" data-lens="focus">
+              <span class="lens-icon focus"><span data-icon="shield"></span></span>
+              <span>Focus shield</span>
+              <span class="toggle" aria-hidden="true"></span>
+            </button>
+            <button class="lens-row" data-lens="travel">
+              <span class="lens-icon travel"><span data-icon="plane"></span></span>
+              <span>Travel context</span>
+              <span class="toggle" aria-hidden="true"></span>
+            </button>
+          </div>
+        </section>
+
+        <div class="sidebar-footer">
+          <button class="timezone-card" data-action="timezone">
+            <span class="tz-globe"><span data-icon="globe"></span></span>
+            <span>
+              <strong>Chicago</strong>
+              <small id="sidebar-time">—</small>
+            </span>
+            <span data-icon="chevron-right"></span>
+          </button>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div class="date-nav">
+            <button class="mobile-menu icon-button" data-action="toggle-sidebar" aria-label="Open menu">
+              <span data-icon="menu"></span>
+            </button>
+            <div class="date-title-wrap">
+              <p class="eyebrow" id="date-eyebrow">YOUR TIME CANVAS</p>
+              <h1 id="range-title">This week</h1>
+            </div>
+            <div class="date-controls">
+              <button class="icon-button" data-action="previous" aria-label="Previous period">
+                <span data-icon="chevron-left"></span>
+              </button>
+              <button class="today-button" data-action="today">Today</button>
+              <button class="icon-button" data-action="next" aria-label="Next period">
+                <span data-icon="chevron-right"></span>
+              </button>
+            </div>
+          </div>
+
+          <div class="top-actions">
+            <div class="view-switcher" role="group" aria-label="Calendar view">
+              <button data-view="day">Day</button>
+              <button data-view="week" class="is-active">Week</button>
+              <button data-view="month">Month</button>
+              <button data-view="agenda">Agenda</button>
+            </div>
+            <button class="search-button" data-action="open-search" aria-label="Search">
+              <span data-icon="search"></span>
+              <span class="search-label">Search</span>
+              <kbd>⌘ K</kbd>
+            </button>
+            <button class="create-button" data-action="create-event">
+              <span data-icon="plus"></span>
+              <span>Create</span>
+            </button>
+          </div>
+        </header>
+
+        <div class="timezone-strip" id="timezone-strip" aria-label="Timezone comparison"></div>
+
+        <div class="workspace-body">
+          <section class="calendar-stage" id="calendar-stage" aria-live="polite"></section>
+
+          <aside class="flow-panel" id="flow-panel" aria-label="Flow intelligence">
+            <div class="flow-header">
+              <div>
+                <span class="kicker"><span class="live-pulse"></span> FLOW INTELLIGENCE</span>
+                <h2 id="flow-day-title">Today</h2>
+              </div>
+              <button class="icon-button small" data-action="collapse-flow" aria-label="Collapse insights">
+                <span data-icon="panel-right"></span>
+              </button>
+            </div>
+
+            <div class="energy-card">
+              <div class="card-title-row">
+                <div>
+                  <span class="card-label">ENERGY RHYTHM</span>
+                  <strong>Peak at <span id="peak-time">9:40 AM</span></strong>
+                </div>
+                <span class="energy-score" id="energy-score">86</span>
+              </div>
+              <div class="energy-chart" aria-label="Predicted energy by hour">
+                <svg viewBox="0 0 280 88" preserveAspectRatio="none" role="img">
+                  <defs>
+                    <linearGradient id="energyFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="var(--accent)" stop-opacity=".34" />
+                      <stop offset="100%" stop-color="var(--accent)" stop-opacity="0" />
+                    </linearGradient>
+                  </defs>
+                  <path class="energy-area" d="M0,72 C28,66 35,38 63,36 C91,34 98,13 126,18 C154,23 158,55 188,49 C218,43 227,61 280,64 L280,88 L0,88 Z" />
+                  <path class="energy-line" d="M0,72 C28,66 35,38 63,36 C91,34 98,13 126,18 C154,23 158,55 188,49 C218,43 227,61 280,64" />
+                  <circle class="energy-peak-dot" cx="118" cy="18" r="4" />
+                </svg>
+                <div class="chart-labels"><span>6a</span><span>9a</span><span>12p</span><span>3p</span><span>6p</span></div>
+              </div>
+            </div>
+
+            <div class="flow-metrics" id="flow-metrics"></div>
+
+            <article class="suggestion-card" id="suggestion-card">
+              <div class="suggestion-top">
+                <span class="spark-badge"><span data-icon="sparkles"></span></span>
+                <span class="suggestion-label">RHYTHM MATCH</span>
+                <button class="icon-button tiny" data-action="dismiss-suggestion" aria-label="Dismiss suggestion"><span data-icon="x"></span></button>
+              </div>
+              <h3 id="suggestion-title">Your deep work can feel lighter.</h3>
+              <p id="suggestion-copy">Shift it into your high-energy window and protect the edges.</p>
+              <div class="suggestion-move" id="suggestion-move">
+                <span class="move-time old">2:00 PM</span>
+                <span data-icon="arrow-right"></span>
+                <span class="move-time new">9:30 AM</span>
+              </div>
+              <button class="reflow-button" data-action="preview-reflow">
+                <span data-icon="wand"></span>
+                Preview reflow
+              </button>
+            </article>
+
+            <section class="up-next-section">
+              <div class="section-title-row">
+                <h3>Up next</h3>
+                <button data-action="open-agenda">See all</button>
+              </div>
+              <div id="up-next-list"></div>
+            </section>
+          </aside>
+        </div>
+
+        <div class="command-dock" id="command-dock">
+          <span class="command-spark"><span data-icon="sparkles"></span></span>
+          <label for="command-input" class="sr-only">Tell Chronovex what you need</label>
+          <input id="command-input" autocomplete="off" placeholder="Tell Chronovex what you need…" />
+          <div class="command-example" id="command-hint">Try “Find 90 minutes for deep work Friday”</div>
+          <button class="command-send" data-action="run-command" aria-label="Run command">
+            <span data-icon="arrow-up"></span>
+          </button>
+        </div>
+      </main>
+    </div>
+
+    <div class="reflow-bar" id="reflow-bar" hidden>
+      <span class="reflow-state"><span data-icon="wand"></span><strong id="reflow-count">2 proposed moves</strong><small>Nothing changes until you apply</small></span>
+      <div class="reflow-actions">
+        <button class="ghost-button" data-action="cancel-reflow">Cancel</button>
+        <button class="apply-button" data-action="apply-reflow"><span data-icon="check"></span> Apply reflow</button>
+      </div>
+    </div>
+
+    <dialog class="event-dialog" id="event-dialog">
+      <form method="dialog" id="event-form">
+        <div class="dialog-header">
+          <div>
+            <span class="dialog-kicker" id="dialog-kicker">NEW MOMENT</span>
+            <h2 id="dialog-title">Shape your time</h2>
+          </div>
+          <button type="button" class="icon-button" data-action="close-dialog" aria-label="Close"><span data-icon="x"></span></button>
+        </div>
+
+        <div class="event-title-field">
+          <span class="event-color-dot" id="event-color-dot"></span>
+          <input id="event-title" name="title" placeholder="What’s happening?" required maxlength="80" autofocus />
+        </div>
+
+        <div class="form-grid">
+          <label class="field-group">
+            <span><span data-icon="calendar"></span> Date</span>
+            <input type="date" id="event-date" name="date" required />
+          </label>
+          <label class="field-group">
+            <span><span data-icon="clock"></span> Starts</span>
+            <input type="time" id="event-start" name="start" step="900" required />
+          </label>
+          <label class="field-group">
+            <span><span data-icon="clock"></span> Ends</span>
+            <input type="time" id="event-end" name="end" step="900" required />
+          </label>
+        </div>
+
+        <label class="field-group full-field">
+          <span><span data-icon="layers"></span> Calendar</span>
+          <select id="event-calendar" name="calendar"></select>
+        </label>
+
+        <div class="constraint-section">
+          <div class="constraint-heading">
+            <span><span data-icon="move-horizontal"></span> How should this moment behave?</span>
+            <small>You can change this later</small>
+          </div>
+          <div class="constraint-options" role="radiogroup" aria-label="Scheduling flexibility">
+            <button type="button" class="constraint-option is-active" data-flex="fixed">
+              <span class="constraint-icon"><span data-icon="lock"></span></span>
+              <span><strong>Fixed</strong><small>Keep this exact time</small></span>
+              <span class="radio-dot"></span>
+            </button>
+            <button type="button" class="constraint-option" data-flex="flexible">
+              <span class="constraint-icon flex"><span data-icon="move-horizontal"></span></span>
+              <span><strong>Flexible</strong><small>Let Reflow optimize it</small></span>
+              <span class="radio-dot"></span>
+            </button>
+          </div>
+        </div>
+
+        <div class="form-grid optional-fields">
+          <label class="field-group">
+            <span><span data-icon="map-pin"></span> Place or link</span>
+            <input id="event-location" name="location" placeholder="Optional" />
+          </label>
+          <label class="field-group">
+            <span><span data-icon="battery"></span> Energy</span>
+            <select id="event-energy" name="energy">
+              <option value="low">Low</option>
+              <option value="medium" selected>Medium</option>
+              <option value="high">High</option>
+            </select>
+          </label>
+        </div>
+
+        <label class="field-group full-field notes-field">
+          <span><span data-icon="align-left"></span> Notes</span>
+          <textarea id="event-notes" name="notes" rows="2" placeholder="Context, intention, or preparation…"></textarea>
+        </label>
+
+        <div class="dialog-footer">
+          <button type="button" class="delete-button" id="delete-event" data-action="delete-event" hidden><span data-icon="trash"></span> Delete</button>
+          <div class="footer-spacer"></div>
+          <button type="button" class="ghost-button" data-action="close-dialog">Cancel</button>
+          <button type="submit" class="save-button"><span data-icon="check"></span> Save moment</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="search-dialog" id="search-dialog">
+      <div class="search-box-head">
+        <span data-icon="search"></span>
+        <input id="global-search" placeholder="Search moments or type a command…" autocomplete="off" />
+        <kbd>ESC</kbd>
+      </div>
+      <div class="search-results" id="search-results"></div>
+      <div class="search-footer"><span><kbd>↑</kbd><kbd>↓</kbd> Navigate</span><span><kbd>↵</kbd> Open</span></div>
+    </dialog>
+
+    <aside class="settings-drawer" id="settings-drawer" aria-hidden="true">
+      <div class="drawer-head">
+        <div><span class="dialog-kicker">CANVAS TUNING</span><h2>Make time yours</h2></div>
+        <button class="icon-button" data-action="close-settings" aria-label="Close settings"><span data-icon="x"></span></button>
+      </div>
+      <div class="setting-group">
+        <label>Accent signal</label>
+        <div class="accent-options" id="accent-options">
+          <button data-accent="lime" class="lime is-active" aria-label="Lime"></button>
+          <button data-accent="cyan" class="cyan" aria-label="Cyan"></button>
+          <button data-accent="violet" class="violet" aria-label="Violet"></button>
+          <button data-accent="coral" class="coral" aria-label="Coral"></button>
+          <button data-accent="amber" class="amber" aria-label="Amber"></button>
+        </div>
+      </div>
+      <div class="setting-group">
+        <label>Canvas density</label>
+        <div class="segmented" id="density-control">
+          <button data-density="compact">Compact</button>
+          <button data-density="balanced" class="is-active">Balanced</button>
+          <button data-density="airy">Airy</button>
+        </div>
+      </div>
+      <label class="setting-row"><span><strong>24-hour time</strong><small>Use 14:00 instead of 2 PM</small></span><input type="checkbox" id="setting-24h" /></label>
+      <label class="setting-row"><span><strong>Show weekends</strong><small>Include Saturday and Sunday</small></span><input type="checkbox" id="setting-weekends" checked /></label>
+      <label class="setting-row"><span><strong>Quiet hours</strong><small>Dim time outside your workday</small></span><input type="checkbox" id="setting-quiet" checked /></label>
+      <div class="setting-group workday-setting">
+        <label>Working window</label>
+        <div><select id="work-start"></select><span>to</span><select id="work-end"></select></div>
+      </div>
+      <button class="reset-button" data-action="reset-demo"><span data-icon="refresh"></span> Restore demo calendar</button>
+    </aside>
+    <div class="drawer-scrim" id="drawer-scrim" data-action="close-drawers"></div>
+
+    <div class="toast-region" id="toast-region" aria-live="polite"></div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "name": "chronovex-calendar",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Chronovex — an adaptive, intelligent calendar built for GitHub Pages.",
+  "scripts": {
+    "dev": "node server.mjs .",
+    "build": "node scripts/build.mjs",
+    "preview": "node server.mjs _site",
+    "test": "node --test",
+    "check": "npm run test && npm run build"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
