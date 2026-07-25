@@ -1,12 +1,14 @@
 /**
- * BRAID sync — real multi-party collaboration with no server behind it.
+ * BRAID sync — one message bus over three transports.
  *
- * Two transports, one message bus:
- *   • BroadcastChannel — every tab or window of this page on the same browser,
- *     connected automatically, zero configuration.
- *   • WebRTC data channel — a second device, connected by exchanging one code
- *     each way. No signalling server, no backend, so it works on static hosting
- *     like GitHub Pages.
+ *   • BroadcastChannel — other tabs of this page in the same browser. Free,
+ *     instant, always on.
+ *   • Relay room — a Cloudflare Durable Object that holds the fabric
+ *     permanently and connects people on different networks. Optional: without
+ *     it the app is simply local.
+ *   • WebRTC — carries huddle voice directly between people. When a relay is
+ *     configured it pairs automatically; without one, two devices can still
+ *     pair by exchanging a code each way.
  *
  * The merge rules live in `mergeFabric` below and are transport-agnostic:
  * operations form a grow-only set keyed by id, removals are tombstones, and the
@@ -14,6 +16,8 @@
  * two people editing the same line stay visible as a collision, which is the
  * whole point of the product.
  */
+
+import { createRelay } from "./fabric-relay.js";
 
 const TONES = ["mint", "violet", "coral", "amber"];
 const PEER_TIMEOUT = 12000;
@@ -68,7 +72,10 @@ export function mergeFabric(local, remote) {
       if (!existing || (op.rev ?? 0) > (existing.rev ?? 0)) ops.set(op.id, op);
     }
     const merged = [...ops.values()].sort((a, b) => (a.at - b.at) || String(a.id).localeCompare(String(b.id)));
-    if (merged.length !== mine.ops.length) changed = true;
+    // Compare identities and revisions, not counts: a swap of one op for
+    // another would leave the count identical while changing the document.
+    const fingerprint = (list) => list.map((op) => `${op.id}:${op.rev ?? 0}`).sort().join("|");
+    if (fingerprint(merged) !== fingerprint(mine.ops)) changed = true;
     files[name] = { ...mine, base, ops: merged };
   }
 
@@ -83,7 +90,8 @@ export function mergeFabric(local, remote) {
       resolved: existing.resolved || thread.resolved,
     });
   }
-  if (threads.size !== (local.threads ?? []).length) changed = true;
+  const threadPrint = (list) => list.map((thread) => `${thread.id}:${thread.replies?.length ?? 0}:${thread.aligned ?? 0}:${thread.resolved ? 1 : 0}`).sort().join("|");
+  if (threadPrint([...threads.values()]) !== threadPrint(local.threads ?? [])) changed = true;
 
   return {
     files,
@@ -94,31 +102,64 @@ export function mergeFabric(local, remote) {
   };
 }
 
+
+const VOICE_TIMEOUT = 20000;
+
 /**
  * Open the message bus. `onMessage(message)` receives every remote message;
- * `onPeers(peers)` fires whenever the roster changes.
+ * `onPeers(peers)` fires whenever the roster changes; `onStatus(status)`
+ * reports the relay connection.
  */
-export function createSync({ room = "helix", identity, onMessage, onPeers, onStream } = {}) {
+export function createSync({ room = "helix", identity, relay, onMessage, onPeers, onStatus, onStream } = {}) {
   const peers = new Map();
   const channels = [];
+  const voices = new Map();          // peer id -> { connection, sender }
   let channel = null;
-  let connection = null;
-  let dataChannel = null;
-  let audioSender = null;
+  let relayClient = null;
+  let micTrack = null;
+  let manual = null;                 // the code-exchange connection, when there is no relay
 
   const emitPeers = () => onPeers?.([...peers.values()]);
 
-  function receive(message) {
-    if (!message || message.from === identity.id) return;
-    if (message.type === "bye") { peers.delete(message.from); emitPeers(); return; }
-    const known = peers.get(message.from);
-    peers.set(message.from, { ...(known ?? {}), ...(message.who ?? {}), id: message.from, seen: Date.now(), via: message.via ?? "tab" });
+  function note(id, patch, via) {
+    const known = peers.get(id);
+    peers.set(id, { ...(known ?? {}), ...patch, id, seen: Date.now(), via: via ?? known?.via ?? "tab" });
     if (!known) emitPeers();
-    onMessage?.(message);
   }
 
-  // Deliberately the page's BroadcastChannel, not a host runtime's global of the
-  // same name — this bus is for browser tabs of this document only.
+  function receive(message) {
+    if (!message || message.from === identity.id) return;
+
+    if (message.type === "bye") { dropPeer(message.from); return; }
+
+    if (message.type === "roster") {
+      const minds = (message.payload?.minds ?? []).filter((id) => id !== identity.id);
+      for (const id of minds) note(id, peers.get(id) ?? { name: "Mind", initials: "??" }, "room");
+      for (const id of [...peers.keys()]) {
+        if (peers.get(id)?.via === "room" && !minds.includes(id)) peers.delete(id);
+      }
+      emitPeers();
+      // Everyone re-announces so names and colours fill in.
+      send("hello");
+      return;
+    }
+
+    if (message.type === "signal") { handleSignal(message); return; }
+
+    if (message.from && message.from !== "room") note(message.from, message.who ?? {}, message.via);
+    // A snapshot is the stored fabric; it merges exactly like a peer's state.
+    onMessage?.(message.type === "snapshot" ? { ...message, type: "state" } : message);
+  }
+
+  function dropPeer(id) {
+    peers.delete(id);
+    const voice = voices.get(id);
+    if (voice) { try { voice.connection.close(); } catch { /* ignore */ } voices.delete(id); }
+    emitPeers();
+  }
+
+  /* ------------------------------- transports ------------------------------ */
+
   try {
     const scope = typeof window !== "undefined" ? window : null;
     if (scope && typeof scope.BroadcastChannel === "function") {
@@ -130,8 +171,21 @@ export function createSync({ room = "helix", identity, onMessage, onPeers, onStr
     // Some sandboxes refuse the channel outright; the page still works alone.
   }
 
-  function send(type, payload) {
-    const message = { type, payload, from: identity.id, who: identity, at: Date.now() };
+  if (relay?.url && relay?.room) {
+    relayClient = createRelay({
+      url: relay.url,
+      room: relay.room,
+      identity,
+      onMessage: (message) => receive({ ...message, via: "room" }),
+      onStatus,
+    });
+    channels.push({ post: (data) => relayClient.send(data) });
+  } else {
+    onStatus?.("offline");
+  }
+
+  function send(type, payload, extra = {}) {
+    const message = { type, payload, from: identity.id, who: identity, at: Date.now(), ...extra };
     for (const transport of channels) {
       try { transport.post(message); } catch { /* a closed transport is not fatal */ }
     }
@@ -140,43 +194,69 @@ export function createSync({ room = "helix", identity, onMessage, onPeers, onStr
   const sweep = setInterval(() => {
     let dropped = false;
     for (const [id, peer] of peers) {
-      if (Date.now() - peer.seen > PEER_TIMEOUT) { peers.delete(id); dropped = true; }
+      if (peer.via !== "room" && Date.now() - peer.seen > PEER_TIMEOUT) { peers.delete(id); dropped = true; }
     }
     if (dropped) emitPeers();
   }, 4000);
 
-  /* ---------------- WebRTC: a second device, no signalling server ---------------- */
+  /* --------------------------------- voice --------------------------------- */
 
-  function prepare(peer) {
-    peer.ontrack = (event) => onStream?.(event.streams[0] ?? new MediaStream([event.track]));
+  function newConnection(id) {
+    const peer = new RTCPeerConnection({ iceServers: STUN });
+    const sender = peer.addTransceiver("audio", { direction: "sendrecv" }).sender;
+    if (micTrack) sender.replaceTrack(micTrack).catch(() => {});
+    peer.ontrack = (event) => onStream?.(event.streams[0] ?? new MediaStream([event.track]), id);
+    peer.onicecandidate = (event) => {
+      if (event.candidate) send("signal", { kind: "ice", candidate: event.candidate.toJSON() }, { to: id });
+    };
+    peer.onconnectionstatechange = () => {
+      if (["failed", "closed"].includes(peer.connectionState)) voices.delete(id);
+    };
+    const entry = { connection: peer, sender };
+    voices.set(id, entry);
+    return entry;
+  }
+
+  /** Open voice to a peer. The lexicographically lower id makes the offer. */
+  async function callPeer(id) {
+    if (typeof RTCPeerConnection !== "function" || voices.has(id)) return;
+    if (identity.id > id) return;                       // they will call us instead
+    const { connection } = newConnection(id);
+    const offer = await connection.createOffer();
+    await connection.setLocalDescription(offer);
+    send("signal", { kind: "offer", sdp: connection.localDescription }, { to: id });
+  }
+
+  async function handleSignal(message) {
+    if (typeof RTCPeerConnection !== "function") return;
+    const id = message.from;
+    const payload = message.payload ?? {};
     try {
-      audioSender = peer.addTransceiver("audio", { direction: "sendrecv" }).sender;
-    } catch {
-      audioSender = null;   // older browsers simply won't carry voice
-    }
-    return peer;
+      if (payload.kind === "offer") {
+        const entry = voices.get(id) ?? newConnection(id);
+        await entry.connection.setRemoteDescription(payload.sdp);
+        const answer = await entry.connection.createAnswer();
+        await entry.connection.setLocalDescription(answer);
+        send("signal", { kind: "answer", sdp: entry.connection.localDescription }, { to: id });
+      } else if (payload.kind === "answer") {
+        await voices.get(id)?.connection.setRemoteDescription(payload.sdp);
+      } else if (payload.kind === "ice") {
+        await voices.get(id)?.connection.addIceCandidate(payload.candidate);
+      }
+    } catch { /* a failed handshake just means no voice with that peer */ }
   }
 
-  /** Swap the live microphone track into the already-negotiated audio lane. */
+  /** Put the live microphone on every voice connection, opening them if needed. */
   async function attachMic(track) {
-    if (!audioSender) return false;
-    await audioSender.replaceTrack(track ?? null);
-    return true;
+    micTrack = track ?? null;
+    if (track) await Promise.all([...peers.keys()].map((id) => callPeer(id).catch(() => {})));
+    await Promise.all([...voices.values()].map((voice) => voice.sender.replaceTrack(track ?? null).catch(() => {})));
+    if (manual?.sender) await manual.sender.replaceTrack(track ?? null).catch(() => {});
+    return voices.size > 0 || Boolean(manual);
   }
 
-  function wireChannel(next) {
-    dataChannel = next;
-    next.onmessage = (event) => {
-      try { receive({ ...JSON.parse(event.data), via: "device" }); } catch { /* ignore malformed frames */ }
-    };
-    next.onopen = () => {
-      channels.push({ post: (data) => next.readyState === "open" && next.send(JSON.stringify(data)) });
-      onMessage?.({ type: "device-connected", from: "local", payload: null });
-    };
-    next.onclose = () => { dataChannel = null; };
-  }
+  /* ------------- manual pairing, for when no relay is configured ------------ */
 
-  /** Wait for ICE to settle so the code we hand over is complete. */
   function gathered(peer) {
     return new Promise((resolve) => {
       if (peer.iceGatheringState === "complete") { resolve(); return; }
@@ -191,38 +271,74 @@ export function createSync({ room = "helix", identity, onMessage, onPeers, onStr
   const encode = (value) => btoa(unescape(encodeURIComponent(JSON.stringify(value))));
   const decode = (value) => JSON.parse(decodeURIComponent(escape(atob(value.trim()))));
 
+  function manualConnection() {
+    const peer = new RTCPeerConnection({ iceServers: STUN });
+    const sender = peer.addTransceiver("audio", { direction: "sendrecv" }).sender;
+    if (micTrack) sender.replaceTrack(micTrack).catch(() => {});
+    peer.ontrack = (event) => onStream?.(event.streams[0] ?? new MediaStream([event.track]), "device");
+    manual = { connection: peer, sender };
+    return peer;
+  }
+
+  function wireManualChannel(next) {
+    next.onmessage = (event) => {
+      try { receive({ ...JSON.parse(event.data), via: "device" }); } catch { /* ignore */ }
+    };
+    next.onopen = () => {
+      channels.push({ post: (data) => next.readyState === "open" && next.send(JSON.stringify(data)) });
+      onMessage?.({ type: "device-connected", from: "local", payload: null });
+      send("hello");
+    };
+  }
+
   async function createOffer() {
     if (typeof RTCPeerConnection !== "function") throw new Error("This browser cannot open a direct connection.");
-    connection = prepare(new RTCPeerConnection({ iceServers: STUN }));
-    wireChannel(connection.createDataChannel("braid"));
-    await connection.setLocalDescription(await connection.createOffer());
-    await gathered(connection);
-    return encode(connection.localDescription);
+    const peer = manualConnection();
+    wireManualChannel(peer.createDataChannel("braid"));
+    await peer.setLocalDescription(await peer.createOffer());
+    await gathered(peer);
+    return encode(peer.localDescription);
   }
 
   async function acceptOffer(code) {
     if (typeof RTCPeerConnection !== "function") throw new Error("This browser cannot open a direct connection.");
-    connection = prepare(new RTCPeerConnection({ iceServers: STUN }));
-    connection.ondatachannel = (event) => wireChannel(event.channel);
-    await connection.setRemoteDescription(decode(code));
-    await connection.setLocalDescription(await connection.createAnswer());
-    await gathered(connection);
-    return encode(connection.localDescription);
+    const peer = manualConnection();
+    peer.ondatachannel = (event) => wireManualChannel(event.channel);
+    await peer.setRemoteDescription(decode(code));
+    await peer.setLocalDescription(await peer.createAnswer());
+    await gathered(peer);
+    return encode(peer.localDescription);
   }
 
   async function acceptAnswer(code) {
-    if (!connection) throw new Error("Create an invite code first.");
-    await connection.setRemoteDescription(decode(code));
+    if (!manual) throw new Error("Create an invite code first.");
+    await manual.connection.setRemoteDescription(decode(code));
   }
 
   function close() {
     clearInterval(sweep);
     try { send("bye"); } catch { /* ignore */ }
     channel?.close();
-    dataChannel?.close();
-    connection?.close();
+    relayClient?.close();
+    for (const voice of voices.values()) { try { voice.connection.close(); } catch { /* ignore */ } }
+    voices.clear();
+    try { manual?.connection.close(); } catch { /* ignore */ }
+    manual = null;
     peers.clear();
   }
 
-  return { send, close, peers, sweep, attachMic, get voiceReady() { return Boolean(audioSender); }, createOffer, acceptOffer, acceptAnswer, get connected() { return peers.size; } };
+  return {
+    send,
+    close,
+    peers,
+    sweep,
+    attachMic,
+    callPeer,
+    createOffer,
+    acceptOffer,
+    acceptAnswer,
+    get voiceReady() { return typeof RTCPeerConnection === "function"; },
+    get relayStatus() { return relayClient?.status ?? "offline"; },
+    get connected() { return peers.size; },
+  };
 }

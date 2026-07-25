@@ -881,3 +881,8 @@ dialog p { margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--muted); 
   font: 700 8.5px/12px var(--mono); padding: 0 4px; border-radius: 4px;
   background: var(--violet); color: #0b0710;
 }
+
+/* the room: a real, shareable session */
+.room-line { display: flex; align-items: center; gap: 9px; padding: 9px 11px; border-radius: 11px; background: rgba(8, 11, 18, 0.6); border: 1px solid var(--line); }
+.room-line code { flex: 1; font: 11.5px var(--mono); color: var(--mint); overflow: hidden; text-overflow: ellipsis; }
+.room-line .signal.cold { background: var(--faint); animation: none; }

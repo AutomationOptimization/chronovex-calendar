@@ -11,10 +11,20 @@ import {
   weave,
 } from "./fabric-core.js";
 import { createIdentity, createSync, mergeFabric } from "./fabric-sync.js";
+import { newRoomId, resolveRelay } from "./fabric-relay.js";
+import { DEFAULT_RELAY } from "./relay-config.js";
 import { createHuddle } from "./huddle.js";
 
-const $ = (selector, root = document) => root.querySelector(selector);
-const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+/**
+ * The app binds to the document it was booted into. Reaching for a global
+ * `document` instead would mean two instances in one process fight over one
+ * DOM — which is exactly the situation the collaboration tests create.
+ */
+let doc = typeof document !== "undefined" ? document : null;
+const win = () => doc?.defaultView ?? (typeof window !== "undefined" ? window : globalThis);
+
+const $ = (selector, root) => (root ?? doc)?.querySelector(selector) ?? null;
+const $$ = (selector, root) => [...((root ?? doc)?.querySelectorAll(selector) ?? [])];
 const reduceMotion = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const STORAGE_KEY = "braid-fabric-v1";
@@ -23,7 +33,7 @@ function storage() {
   // A sandboxed iframe throws on this property rather than returning undefined,
   // so every access has to be guarded, not just every read and write.
   try {
-    return typeof window !== "undefined" ? window.localStorage ?? null : null;
+    return win()?.localStorage ?? null;
   } catch {
     return null;
   }
@@ -77,8 +87,10 @@ const ICONS = {
 const icon = (name) =>
   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || '<circle cx="12" cy="12" r="8"/>'}</svg>`;
 
-function hydrateIcons(root = document) {
-  $$("[data-icon]", root).forEach((node) => { node.innerHTML = icon(node.dataset.icon); });
+function hydrateIcons(root) {
+  const scope = root ?? doc;
+  if (!scope) return;
+  $$("[data-icon]", scope).forEach((node) => { node.innerHTML = icon(node.dataset.icon); });
 }
 
 const escapeHTML = (value) => String(value).replace(/[&<>"']/g, (char) =>
@@ -286,11 +298,32 @@ const state = {
   tombstones: [],
   baseVersion: 0,
   peers: [],
+  relay: "offline",
   remoteCarets: new Map(),
   remoteGhosts: new Map(),
 };
 
 const identity = createIdentity(storage());
+
+/** The room this tab belongs to, and the URL that lets anyone else join it. */
+const session = (() => {
+  const resolved = resolveRelay({ storage: storage(), fallback: DEFAULT_RELAY });
+  let room = resolved.room;
+  if (!room) {
+    try { room = storage()?.getItem("braid-room") ?? ""; } catch { room = ""; }
+  }
+  if (!room) room = newRoomId();
+  try { storage()?.setItem("braid-room", room); } catch { /* ignore */ }
+  return { url: resolved.url, room };
+})();
+
+function shareLink() {
+  if (typeof window === "undefined") return `#room=${session.room}`;
+  const base = `${window.location.origin}${window.location.pathname}`;
+  const parts = [`room=${encodeURIComponent(session.room)}`];
+  if (session.url && session.url !== DEFAULT_RELAY) parts.push(`relay=${encodeURIComponent(session.url)}`);
+  return `${base}#${parts.join("&")}`;
+}
 const MY_LAYER = `mine-${identity.id}`;
 let sync = null;
 
@@ -316,7 +349,7 @@ const medianWeave = () => {
   return Math.round(sorted[Math.floor(sorted.length / 2)] * 100) / 100;
 };
 
-const nextOpId = () => `op-${(state.opCounter += 1).toString(36)}`;
+const nextOpId = () => `${identity.id}-${(state.opCounter += 1).toString(36)}`;
 const layerById = (id) => state.layers.find((layer) => layer.id === id);
 const fileOf = (name, files = state.files) => files[name] ?? files["presence.ts"];
 const openThreads = () => state.threads.filter((thread) => !thread.resolved).length;
@@ -568,8 +601,10 @@ function ensureLayers() {
 
 function startSync() {
   sync = createSync({
-    room: "helix",
+    room: session.room,
     identity,
+    relay: session.url ? { url: session.url, room: session.room } : null,
+    onStatus: (status) => { state.relay = status; renderPeople(); },
     onMessage: receive,
     onPeers,
     onStream: (stream) => {
@@ -600,10 +635,16 @@ function renderPeople() {
   if (weave) weave.textContent = state.weaveMs.length ? `${medianWeave()}ms weave` : "measuring…";
   const statusWeave = $("#status-weave");
   if (statusWeave) statusWeave.textContent = state.weaveMs.length ? `${medianWeave()}ms median weave` : "";
+  const label = {
+    live: state.peers.length ? `room · ${state.peers.length} with you` : "room · waiting",
+    connecting: "joining room…",
+    retrying: "reconnecting…",
+    offline: state.peers.length ? `${state.peers.length} in this browser` : "local only",
+  }[state.relay] ?? state.relay;
   const statusSync = $("#status-sync");
-  if (statusSync) statusSync.textContent = state.peers.length ? `synced with ${state.peers.length}` : "local";
+  if (statusSync) statusSync.textContent = label;
   const workspaceSync = $("#workspace-sync");
-  if (workspaceSync) workspaceSync.textContent = state.peers.length ? `synced with ${state.peers.length}` : "local only";
+  if (workspaceSync) workspaceSync.textContent = label;
   const status = $("#status-minds");
   if (status) status.textContent = state.peers.length
     ? `${1 + state.peers.length} minds live · ${state.peers.filter((peer) => peer.via === "device").length} by direct link`
@@ -612,8 +653,11 @@ function renderPeople() {
 
 /** Invite dialog: same-browser tabs join themselves, other devices exchange one code each. */
 function renderInvite() {
+  const link = $("#invite-link");
+  if (link) link.value = shareLink();
   const host = $("#device-connect");
   if (!host) return;
+  if (session.url) { renderRoomInvite(host); return; }
   host.innerHTML = `
     <div class="device-head"><span class="card-kicker">BRING A DEVICE</span>
       <p>Tabs of this page join each other automatically. For a phone or another laptop, trade one code each way — the connection is direct, with no server in between.</p></div>
@@ -626,6 +670,22 @@ function renderInvite() {
     <label class="invite-field" hidden id="paste-field"><span data-icon="user-plus"></span>
       <input id="paste-code" placeholder="Paste the code you were sent" aria-label="Paste code" /><button type="button" data-action="use-code">Connect</button></label>
     <div class="dialog-note" id="connect-note" hidden></div>`;
+  hydrateIcons(host);
+}
+
+/** With a room deployed, inviting someone is just sending them the link. */
+function renderRoomInvite(host) {
+  const status = {
+    live: "You're in the room. Anyone who opens this link joins the same fabric.",
+    connecting: "Joining the room…",
+    retrying: "Lost the room — reconnecting.",
+    offline: "Not connected to the room.",
+  }[state.relay] ?? state.relay;
+  host.innerHTML = `
+    <div class="device-head"><span class="card-kicker">SHARE THE ROOM</span><p>${escapeHTML(status)}</p></div>
+    <div class="room-line"><span class="signal ${state.relay === "live" ? "" : "cold"}"></span>
+      <code>${escapeHTML(session.room)}</code>
+      <button type="button" class="pill-button" data-action="forget-relay">Change room server</button></div>`;
   hydrateIcons(host);
 }
 
@@ -881,10 +941,10 @@ function focusEditor() {
       sync.send("ghost", { file: state.file, line: state.editing?.n, text: input.textContent });
     };
     input.focus();
-    const range = document.createRange();
+    const range = doc.createRange();
     range.selectNodeContents(input);
     range.collapse(false);
-    const selection = window.getSelection?.();
+    const selection = win().getSelection?.();
     selection?.removeAllRanges();
     selection?.addRange(range);
     return;
@@ -902,7 +962,7 @@ function paintCarets() {
     if (Date.now() - caret.seen > 15000 || caret.file !== state.file) continue;
     const row = $(`.code-line[data-line="${caret.line}"] .code-text`, host);
     if (!row) continue;
-    const marker = document.createElement("span");
+    const marker = doc.createElement("span");
     marker.className = "remote-caret is-real";
     marker.dataset.name = caret.who?.name ?? id;
     marker.style.background = `var(--${caret.who?.tone ?? "violet"})`;
@@ -1135,7 +1195,7 @@ function renderContinuum() {
 function toast(message, tone = "mint", glyph = "check") {
   const region = $("#toast-region");
   if (!region) return;
-  const node = document.createElement("div");
+  const node = doc.createElement("div");
   node.className = `toast ${tone}`;
   node.innerHTML = `<span data-icon="${glyph}"></span><span>${escapeHTML(message)}</span>`;
   hydrateIcons(node);
@@ -1325,9 +1385,9 @@ function runConverge() {
   state.threads = state.threads.map((thread) => ({ ...thread, resolved: true }));
   record("converged", `${layers.length} layers sealed into shared state`, "mint");
   if (!reduceMotion && typeof document !== "undefined") {
-    const flash = document.createElement("div");
+    const flash = doc.createElement("div");
     flash.className = "converge-flash";
-    document.body.append(flash);
+    doc.body.append(flash);
     setTimeout(() => flash.remove(), 1000);
   }
   render();
@@ -1539,7 +1599,7 @@ async function exportSealed() {
     }
     const blob = new Blob([data], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
+    const anchor = doc.createElement("a");
     anchor.href = url;
     anchor.download = state.file;
     anchor.click();
@@ -1586,7 +1646,7 @@ function togglePanel(selector, force) {
   const panel = $(selector);
   if (!panel) return;
   panel.classList.toggle("is-open", force ?? !panel.classList.contains("is-open"));
-  document.body.classList.toggle("has-panel", Boolean($(".project-panel.is-open") || $(".convergence-panel.is-open")));
+  doc.body.classList.toggle("has-panel", Boolean($(".project-panel.is-open") || $(".convergence-panel.is-open")));
 }
 
 function closePanels() {
@@ -1745,6 +1805,14 @@ function handleAction(action, element) {
       break;
     }
     case "use-code": useCode(); break;
+    case "forget-relay": {
+      const next = win().prompt?.("Room server URL (your deployed Worker), or blank to work locally:", session.url ?? "");
+      if (next === null || next === undefined) break;
+      try { next.trim() ? storage()?.setItem("braid-relay-url", next.trim()) : storage()?.removeItem("braid-relay-url"); } catch { /* ignore */ }
+      toast("Reloading into that room…", "violet", "cloud");
+      timers.push(setTimeout(() => win().location.reload(), 600));
+      break;
+    }
     case "permission-menu": toast("Permission set to “Can shape”", "violet", "shield"); break;
     case "huddle": toggleHuddle(); break;
     case "toggle-mute": toggleMute(); break;
@@ -1817,7 +1885,7 @@ function onClick(event) {
   if (tab) { openFile(tab.dataset.tab); return; }
 
   const file = target.closest(".file-row[data-file]");
-  if (file) { openFile(file.dataset.file); if (window.innerWidth <= 780) closePanels(); return; }
+  if (file) { openFile(file.dataset.file); if (win().innerWidth <= 780) closePanels(); return; }
 
   const folder = target.closest(".tree-folder");
   if (folder) {
@@ -1889,7 +1957,7 @@ function onClick(event) {
 function editFutureLine(id, index) {
   const future = state.futures.find((item) => item.id === id);
   if (!future) return;
-  const next = window.prompt?.(`Reshape line ${index + 1} of ${future.title}`, future.base[index]);
+  const next = win().prompt?.(`Reshape line ${index + 1} of ${future.title}`, future.base[index]);
   if (next === null || next === undefined) return;
   pushUndo();
   future.base[index] = next;
@@ -2003,7 +2071,8 @@ function stopClocks() {
   sync = null;
 }
 
-function boot() {
+function boot(target) {
+  doc = target ?? (typeof document !== "undefined" ? document : doc);
   seedHistory();
   load();
   try {
@@ -2024,13 +2093,13 @@ function bootInteractive() {
   try { startSync(); } catch (error) { console.warn("BRAID: collaboration transport unavailable", error); }
   render();
 
-  document.addEventListener("click", onClick);
-  document.addEventListener("dblclick", (event) => {
+  doc.addEventListener("click", onClick);
+  doc.addEventListener("dblclick", (event) => {
     const line = event.target.closest?.(".code-line");
     if (line && state.mode === "fabric") beginEdit(Number(line.dataset.line));
   });
-  document.addEventListener("keydown", onKeydown);
-  document.addEventListener("submit", onSubmit);
+  doc.addEventListener("keydown", onKeydown);
+  doc.addEventListener("submit", onSubmit);
   $("#command-input")?.addEventListener("input", (event) => { paletteCursor = 0; renderPalette(event.target.value); });
 
   if (typeof setInterval === "function" && !reduceMotion) {

@@ -9,10 +9,14 @@ The same Pages site also hosts **BRAID**, a branchless code collaboration platfo
 - **Intent layers instead of branches.** Your edits hover above the shared file as your own attributed layer. Toggle any layer and the document re-weaves under you.
 - **Collisions, not conflicts.** Two minds reshaping the same line is surfaced live and blocks convergence — both intents are held, neither is overwritten.
 - **Atomic convergence.** Every compatible layer seals into one shared state at once, or nothing lands.
-- **Real multi-party sync, no server.** Tabs and windows of the page find each other over `BroadcastChannel`; a second device connects peer-to-peer over WebRTC by exchanging one code each way. Static hosting is enough.
+- **Real multi-party collaboration.** Tabs find each other automatically over `BroadcastChannel`. For people on other machines, deploy the room in [`relay/`](relay/README.md) — one command — and the session URL becomes the invitation. The room also stores the fabric, so a session outlives every browser that was in it. Huddle voice is negotiated through the room but travels peer-to-peer.
 - **A continuum you can scrub.** Every action snapshots the fabric, so rewinding shows the document as it actually was.
 
-Sync merge rules live in `braid/fabric-sync.js` (grow-only operation set, tombstones for removals, versioned sealed text) and the weave/convergence model in `braid/fabric-core.js` — both DOM-free and unit tested.
+Merge rules live in `braid/fabric-sync.js` (grow-only operation set keyed per mind, tombstones for removals, versioned sealed text) and the weave/convergence model in `braid/fabric-core.js` — both DOM-free and unit tested. The Worker runs the *same* merge function the browsers do, so the room and its clients cannot disagree.
+
+```bash
+npm run relay:deploy
+```
 
 `node scripts/bundle-braid.mjs out.html` inlines BRAID into a single self-contained file.
 

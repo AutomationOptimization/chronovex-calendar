@@ -1,0 +1,16 @@
+name = "braid-relay"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+# One Durable Object per room: it holds the fabric and the open sockets.
+[[durable_objects.bindings]]
+name = "BRAID_ROOM"
+class_name = "BraidRoom"
+
+# SQLite-backed Durable Objects are included in the Workers free plan.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["BraidRoom"]
+
+[observability]
+enabled = true

@@ -9,7 +9,9 @@
     "build": "node scripts/build.mjs",
     "preview": "node server.mjs _site",
     "test": "node --test",
-    "check": "npm run test && npm run build"
+    "check": "npm run test && npm run build",
+    "relay:deploy": "cd relay && npx wrangler deploy",
+    "relay:dev": "cd relay && npx wrangler dev"
   },
   "engines": {
     "node": ">=20"
