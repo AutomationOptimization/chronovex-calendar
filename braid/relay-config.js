@@ -9,4 +9,4 @@
  * It can also be set per visit with ?relay=... , or from the Invite dialog,
  * which remembers it in this browser.
  */
-export const DEFAULT_RELAY = "";
+export const DEFAULT_RELAY = "https://braid-relay.autoopti.workers.dev";
