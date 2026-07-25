@@ -125,7 +125,7 @@ test("a first visit is offered the walkthrough, and can decline forever", async 
 
     click('[data-guide="dismiss"]');
     assert.equal(doc.querySelector(".guide-card"), null, "declining removes it");
-    assert.ok(doc.querySelector(".guide-dock"), "leaving only a quiet way back");
+    assert.ok(doc.querySelector(".opti-character"), "Opti stays, asleep, as the quiet way back");
     assert.equal(guide().memory.dismissed, true, "and it is remembered");
   } finally { done(); }
 });
@@ -198,6 +198,9 @@ test("the stylesheet keeps the overlay click-through and the ring non-blocking",
   assert.match(css, /\.guide-root\s*\{[^}]*pointer-events:\s*none/, "the overlay must not block the app");
   assert.match(css, /\.guide-ring\s*\{[^}]*pointer-events:\s*none/, "the spotlight ring must not block its own target");
   assert.match(css, /\.guide-root\s*>\s*\*\s*\{[^}]*pointer-events:\s*auto/, "but the cards themselves must be clickable");
+  assert.match(css, /\.opti\s*\{[^}]*position:\s*fixed/, "Opti has a real viewport position");
+  assert.match(css, /\.opti-character\s*\{[^}]*touch-action:\s*none/, "dragging works on touch screens without scrolling the page");
+  assert.match(css, /\.opti-bubble\s*\{[^}]*max-height:/, "the bubble cannot grow beyond the viewport");
 });
 
 test("escape leaves the walkthrough, and the palette brings it back", async () => {
@@ -226,5 +229,25 @@ test("the guide survives the app re-rendering underneath it", async () => {
     assert.ok(doc.querySelector(".guide-card"), "the card is still there after re-renders");
     assert.equal(doc.querySelectorAll(".guide-card").length, 1, "and there is exactly one of it");
     assert.equal(guide().step.id, "shape");
+  } finally { done(); }
+});
+
+test("the command palette opens real Opti Q&A and escape returns focus to Opti", async () => {
+  const { doc, click, window, done } = await bootApp();
+  try {
+    click('[data-action="open-command"]');
+    const search = doc.querySelector("#command-input");
+    search.value = "ask opti";
+    search.dispatchEvent(new window.Event("input", { bubbles: true }));
+    click('[data-command="ask-opti"]');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const question = doc.querySelector('[data-opti-ask] input[name="question"]');
+    assert.ok(question, "the command opens an actual question field");
+    assert.equal(doc.activeElement, question);
+
+    question.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    assert.equal(doc.querySelector("[data-opti-ask]"), null);
+    assert.ok(doc.activeElement?.classList.contains("opti-character"));
   } finally { done(); }
 });

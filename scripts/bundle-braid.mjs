@@ -10,8 +10,8 @@ const [output = "braid-standalone.html", ...flags] = process.argv.slice(2);
 const fragment = flags.includes("--fragment");
 const read = (file) => readFile(resolve("braid", file), "utf8");
 
-const [html, css, core, relay, relayConfig, sync, huddle, guide, app] = await Promise.all([
-  read("index.html"), read("styles.css"), read("fabric-core.js"), read("fabric-relay.js"), read("relay-config.js"), read("fabric-sync.js"), read("huddle.js"), read("guide.js"), read("app.js"),
+const [html, css, core, relay, relayConfig, sync, huddle, optiLines, voice, opti, guide, app] = await Promise.all([
+  read("index.html"), read("styles.css"), read("fabric-core.js"), read("fabric-relay.js"), read("relay-config.js"), read("fabric-sync.js"), read("huddle.js"), read("opti-lines.js"), read("voice.js"), read("opti.js"), read("guide.js"), read("app.js"),
 ]);
 
 const script = [
@@ -20,12 +20,16 @@ const script = [
   relay.replace(/^export /gm, ""),
   sync.replace(/^export /gm, "").replace(/^import\s*\{[^}]*\}\s*from\s*"\.\/fabric-relay\.js";\n/m, ""),
   huddle.replace(/^export /gm, ""),
-  guide.replace(/^export /gm, ""),
+  optiLines.replace(/^export /gm, ""),
+  voice.replace(/^export /gm, ""),
+  opti.replace(/^export /gm, "").replace(/^import\s*\{[^}]*\}\s*from\s*"\.\/opti-lines\.js";\n/m, ""),
+  guide.replace(/^export /gm, "").replace(/^import\s*\{[^}]*\}\s*from\s*"\.\/opti\.js";\n/m, ""),
   app
     .replace(/^import\s*\{[\s\S]*?\}\s*from\s*"\.\/fabric-core\.js";\n/m, "")
     .replace(/^import\s*\{[^}]*\}\s*from\s*"\.\/fabric-sync\.js";\n/m, "")
     .replace(/^import\s*\{[^}]*\}\s*from\s*"\.\/huddle\.js";\n/m, "")
     .replace(/^import\s*\{[^}]*\}\s*from\s*"\.\/guide\.js";\n/m, "")
+    .replace(/^import\s*\{[^}]*\}\s*from\s*"\.\/voice\.js";\n/m, "")
     .replace(/^import\s*\{[^}]*\}\s*from\s*"\.\/fabric-relay\.js";\n/m, "")
     .replace(/^import\s*\{[^}]*\}\s*from\s*"\.\/relay-config\.js";\n/m, "")
     .replace(/^export \{[^}]*\};?\s*$/m, "")
@@ -42,6 +46,18 @@ const page = `${fragment ? "" : `<!doctype html>\n<html lang="en">\n<head>\n<met
   `<title>BRAID — Many minds. One codebase.</title>\n<style>\n${css}\n</style>\n` +
   `${fragment ? "" : "</head>\n<body>\n"}${body}\n<script type="module">\n${script}\n</script>\n` +
   `${fragment ? "" : "</body>\n</html>\n"}`;
+
+// Concatenation shares one scope, so two modules declaring the same top-level
+// name is a syntax error at load. Catch it here instead of in someone's browser.
+const declared = new Map();
+for (const [, keyword, name] of script.matchAll(/^(const|let|var|function|class)\s+([A-Za-z_$][\w$]*)/gm)) {
+  declared.set(name, (declared.get(name) ?? 0) + 1);
+  void keyword;
+}
+const clashes = [...declared].filter(([, count]) => count > 1).map(([name]) => name);
+if (clashes.length > 0) {
+  throw new Error(`Bundle would not load: these top-level names are declared more than once — ${clashes.join(", ")}. Rename one of them.`);
+}
 
 await writeFile(resolve(output), page, "utf8");
 console.log(`Bundled BRAID into ${output} (${Math.round(page.length / 1024)}kb)`);
