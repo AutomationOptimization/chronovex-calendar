@@ -20,7 +20,15 @@ const reduceMotion = typeof matchMedia === "function" && matchMedia("(prefers-re
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const STORAGE_KEY = "braid-fabric-v1";
 // Always the page's own storage — never a host runtime's global of the same name.
-const storage = () => (typeof window !== "undefined" ? window.localStorage ?? null : null);
+function storage() {
+  // A sandboxed iframe throws on this property rather than returning undefined,
+  // so every access has to be guarded, not just every read and write.
+  try {
+    return typeof window !== "undefined" ? window.localStorage ?? null : null;
+  } catch {
+    return null;
+  }
+}
 
 const ICONS = {
   "arrow-right": '<path d="M4 12h14M13 7l5 5-5 5"/>',
@@ -1757,7 +1765,8 @@ function onKeydown(event) {
     return;
   }
 
-  if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+  const tag = event.target?.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA") {
     if (event.key === "Escape") { state.composing = null; closePalette(); render(); }
     if (!paletteOpen) return;
   }
@@ -1873,15 +1882,29 @@ function stopClocks() {
 function boot() {
   seedHistory();
   load();
+  try {
+    bootInteractive();
+  } catch (error) {
+    // The fabric itself must still render and stay editable.
+    console.error("BRAID: a subsystem failed to start", error);
+    render();
+  }
+}
+
+function bootInteractive() {
   if (!layerById(MY_LAYER)) state.layers.push({ id: MY_LAYER, author: identity.initials, ...MY_LAYER_SEED });
   state.activeLayers.add(MY_LAYER);
   ensureLayers();
   hydrateIcons();
   renderInvite();
-  startSync();
+  try { startSync(); } catch (error) { console.warn("BRAID: collaboration transport unavailable", error); }
   render();
 
   document.addEventListener("click", onClick);
+  document.addEventListener("dblclick", (event) => {
+    const line = event.target.closest?.(".code-line");
+    if (line && state.mode === "fabric") beginEdit(Number(line.dataset.line));
+  });
   document.addEventListener("keydown", onKeydown);
   document.addEventListener("submit", onSubmit);
   $("#command-input")?.addEventListener("input", (event) => { paletteCursor = 0; renderPalette(event.target.value); });
@@ -1889,6 +1912,7 @@ function boot() {
   if (typeof setInterval === "function" && !reduceMotion) {
     timers.push(setInterval(tickGhost, 130), setInterval(tickPresence, 2400), setInterval(tickReplay, 320));
   }
+
   timers.push(setTimeout(() => toast("Click any line to shape it — your edits become an intent layer", "amber", "pen"), 1200));
 }
 

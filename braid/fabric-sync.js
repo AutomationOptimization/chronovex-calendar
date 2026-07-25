@@ -118,11 +118,15 @@ export function createSync({ room = "helix", identity, onMessage, onPeers } = {}
 
   // Deliberately the page's BroadcastChannel, not a host runtime's global of the
   // same name — this bus is for browser tabs of this document only.
-  const scope = typeof window !== "undefined" ? window : null;
-  if (scope && typeof scope.BroadcastChannel === "function") {
-    channel = new scope.BroadcastChannel(`braid-${room}`);
-    channel.onmessage = (event) => receive(event.data);
-    channels.push({ post: (data) => channel.postMessage(data) });
+  try {
+    const scope = typeof window !== "undefined" ? window : null;
+    if (scope && typeof scope.BroadcastChannel === "function") {
+      channel = new scope.BroadcastChannel(`braid-${room}`);
+      channel.onmessage = (event) => receive(event.data);
+      channels.push({ post: (data) => channel.postMessage(data) });
+    }
+  } catch {
+    // Some sandboxes refuse the channel outright; the page still works alone.
   }
 
   function send(type, payload) {
