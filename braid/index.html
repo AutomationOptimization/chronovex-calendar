@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#080b12" />
+    <meta
+      name="description"
+      content="BRAID — a branchless live code fabric where many minds shape one codebase together."
+    />
+    <title>BRAID — Many minds. One codebase.</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./styles.css?v=1" />
+  </head>
+  <body>
+    <div class="noise" aria-hidden="true"></div>
+    <div class="app-shell" id="app">
+      <aside class="nav-rail" aria-label="BRAID navigation">
+        <button class="brand-button" data-action="go-live" aria-label="BRAID home">
+          <span class="brand-glyph" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="brand-word">BRAID</span>
+        </button>
+
+        <nav class="primary-nav" aria-label="Workspace views">
+          <button class="nav-button is-active" data-mode="fabric" data-tooltip="Fabric" aria-label="Fabric">
+            <span data-icon="code"></span><small>Fabric</small>
+          </button>
+          <button class="nav-button" data-mode="layers" data-tooltip="Intent layers" aria-label="Intent layers">
+            <span data-icon="layers"></span><small>Layers</small><b class="nav-count">3</b>
+          </button>
+          <button class="nav-button" data-mode="futures" data-tooltip="Parallel futures" aria-label="Parallel futures">
+            <span data-icon="split"></span><small>Futures</small>
+          </button>
+          <button class="nav-button" data-mode="threads" data-tooltip="Living threads" aria-label="Living threads">
+            <span data-icon="message"></span><small>Threads</small><b class="nav-dot"></b>
+          </button>
+          <button class="nav-button" data-mode="pulse" data-tooltip="Runtime pulse" aria-label="Runtime pulse">
+            <span data-icon="pulse"></span><small>Pulse</small>
+          </button>
+        </nav>
+
+        <div class="rail-bottom">
+          <button class="nav-button" data-action="open-command" data-tooltip="Command palette" aria-label="Command palette">
+            <span data-icon="command"></span><small>Command</small>
+          </button>
+          <button class="profile-button" data-action="profile" aria-label="Your profile">
+            <span>KC</span><i title="Connected"></i>
+          </button>
+        </div>
+      </aside>
+
+      <aside class="project-panel" id="project-panel" aria-label="Project explorer">
+        <div class="project-head">
+          <div class="micro-label"><span class="signal"></span> LIVE WORKSPACE</div>
+          <button class="project-switcher" data-action="project-menu">
+            <span class="project-mark">HX</span>
+            <span><strong>Helix</strong><small>spatial-runtime</small></span>
+            <span data-icon="chevrons"></span>
+          </button>
+          <div class="workspace-state">
+            <span><span data-icon="infinity"></span> Branchless</span>
+            <span>synced 18ms</span>
+          </div>
+        </div>
+
+        <section class="topology-section">
+          <div class="section-heading">
+            <span>ACTIVE TOPOLOGY</span>
+            <button data-action="expand-topology" aria-label="Expand topology"><span data-icon="expand"></span></button>
+          </div>
+          <button class="topology-map" data-action="scope-beam" aria-label="Activate semantic scope beam">
+            <svg viewBox="0 0 218 96" role="img" aria-label="Live dependency map">
+              <defs>
+                <linearGradient id="topologyLine" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0" stop-color="#55e6c1" />
+                  <stop offset="1" stop-color="#9a83ff" />
+                </linearGradient>
+                <filter id="nodeGlow"><feGaussianBlur stdDeviation="3" result="blur" /><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+              </defs>
+              <g class="topology-links">
+                <path d="M25 58 C52 58 48 25 81 27" />
+                <path d="M82 27 C112 27 102 69 134 67" />
+                <path d="M82 27 C122 22 147 28 181 35" />
+                <path d="M134 67 C161 67 164 48 181 35" />
+                <path d="M134 67 C160 76 181 76 199 66" />
+              </g>
+              <g class="topology-nodes">
+                <circle class="node quiet" cx="25" cy="58" r="6" />
+                <circle class="node mint" cx="82" cy="27" r="8" />
+                <circle class="node violet" cx="134" cy="67" r="8" />
+                <circle class="node coral" cx="181" cy="35" r="7" />
+                <circle class="node quiet" cx="199" cy="66" r="5" />
+                <circle class="presence-ring" cx="82" cy="27" r="13" />
+              </g>
+              <g class="topology-labels">
+                <text x="12" y="76">client</text><text x="62" y="14">presence</text>
+                <text x="116" y="87">layers</text><text x="164" y="20">runtime</text>
+              </g>
+            </svg>
+            <span class="scope-beam-label"><span data-icon="target"></span> Beam scope</span>
+          </button>
+        </section>
+
+        <section class="explorer-section">
+          <div class="section-heading">
+            <span>CODE FABRIC</span>
+            <button data-action="new-file" aria-label="New file"><span data-icon="plus"></span></button>
+          </div>
+          <div class="file-tree" id="file-tree">
+            <button class="tree-folder is-open" data-folder="src"><span data-icon="chevron"></span><span data-icon="folder"></span>src</button>
+            <div class="tree-children">
+              <button class="tree-folder is-open" data-folder="collab"><span data-icon="chevron"></span><span data-icon="folder"></span>collab</button>
+              <div class="tree-children nested">
+                <button class="file-row is-active" data-file="presence.ts"><span class="file-type ts">TS</span><span>presence.ts</span><i class="presence-lane mint"></i><em>AM</em></button>
+              </div>
+              <button class="tree-folder is-open" data-folder="canvas"><span data-icon="chevron"></span><span data-icon="folder"></span>canvas</button>
+              <div class="tree-children nested">
+                <button class="file-row" data-file="IntentLayer.tsx"><span class="file-type tsx">TX</span><span>IntentLayer.tsx</span><i class="presence-lane violet"></i><em>NO</em></button>
+              </div>
+              <button class="tree-folder is-open" data-folder="runtime"><span data-icon="chevron"></span><span data-icon="folder"></span>runtime</button>
+              <div class="tree-children nested">
+                <button class="file-row" data-file="converge.ts"><span class="file-type ts">TS</span><span>converge.ts</span><i class="presence-lane coral"></i><em>SR</em></button>
+              </div>
+              <button class="tree-folder" data-folder="styles"><span data-icon="chevron"></span><span data-icon="folder"></span>styles</button>
+              <div class="tree-children nested">
+                <button class="file-row" data-file="fabric.css"><span class="file-type css">#</span><span>fabric.css</span></button>
+              </div>
+            </div>
+            <button class="tree-folder is-open" data-folder="tests"><span data-icon="chevron"></span><span data-icon="folder"></span>tests</button>
+            <div class="tree-children">
+              <button class="file-row" data-file="convergence.spec.ts"><span class="file-type test">✓</span><span>convergence.spec.ts</span><i class="file-pass"></i></button>
+            </div>
+            <button class="file-row root-file" data-file="README.md"><span class="file-type md">M</span><span>README.md</span></button>
+          </div>
+        </section>
+
+        <section class="room-section">
+          <div class="section-heading"><span>ROOMS</span><button data-action="new-room" aria-label="New room"><span data-icon="plus"></span></button></div>
+          <button class="room-row is-active" data-room="runtime"><span class="room-hash">#</span><span><strong>runtime-core</strong><small>8 people shaping</small></span><b>8</b></button>
+          <button class="room-row" data-room="interface"><span class="room-hash">#</span><span><strong>interface</strong><small>2 people shaping</small></span><b>2</b></button>
+        </section>
+      </aside>
+
+      <header class="session-bar">
+        <div class="session-left">
+          <button class="mobile-panel-button" data-action="toggle-project" aria-label="Open project explorer"><span data-icon="menu"></span></button>
+          <div class="breadcrumbs"><span>helix</span><span data-icon="slash"></span><strong>spatial-runtime</strong></div>
+          <span class="session-chip"><span class="live-pulse"></span> Session 04</span>
+        </div>
+        <div class="session-summary" aria-label="Session status">
+          <span><strong id="mind-count">12</strong> minds</span><i></i>
+          <span><strong id="layer-count">3</strong> intent layers</span><i></i>
+          <span class="runtime-stable"><span data-icon="pulse"></span> runtime stable</span>
+        </div>
+        <div class="session-actions">
+          <div class="avatar-stack" id="avatar-stack" aria-label="Active collaborators">
+            <button class="avatar mint" data-person="Amara" title="Amara — presence.ts">AM<span></span></button>
+            <button class="avatar violet" data-person="Noor" title="Noor — IntentLayer.tsx">NO<span></span></button>
+            <button class="avatar coral" data-person="Soren" title="Soren — converge.ts">SR<span></span></button>
+            <button class="avatar amber" data-person="Mika" title="Mika — reviewing">MI<span></span></button>
+            <button class="avatar more" data-action="show-people" title="8 more collaborators">+8</button>
+          </div>
+          <button class="huddle-button" data-action="huddle"><span data-icon="wave"></span><span>Huddle</span></button>
+          <button class="invite-button" data-action="invite"><span data-icon="user-plus"></span><span>Invite</span></button>
+        </div>
+      </header>
+
+      <main class="editor-shell" aria-label="Shared code editor">
+        <div class="editor-context" id="editor-context">
+          <div class="context-path"><span class="file-symbol">TS</span><span>src</span><span data-icon="chevron-right"></span><span>collab</span><span data-icon="chevron-right"></span><strong id="context-file">presence.ts</strong></div>
+          <div class="scope-controls">
+            <button class="scope-button" data-action="scope-beam"><span data-icon="target"></span><span>Scope beam</span><kbd>⌥ S</kbd></button>
+            <button class="ghost-button" data-action="toggle-ghosts"><span data-icon="ghost"></span><span>Ghost edits</span><i class="switch is-on"></i></button>
+            <button class="icon-button" data-action="editor-more" aria-label="Editor options"><span data-icon="more"></span></button>
+          </div>
+        </div>
+
+        <div class="follow-banner" id="follow-banner" hidden>
+          <span class="mini-avatar mint" id="follow-avatar">AM</span>
+          <span>You’re following <strong id="follow-name">Amara</strong> through the fabric</span>
+          <button data-action="stop-following">Release</button>
+        </div>
+
+        <div class="editor-tabs" id="editor-tabs"></div>
+
+        <div class="editor-canvas" id="editor-canvas">
+          <div class="code-scroll" id="code-scroll" tabindex="0" aria-label="Code in presence.ts">
+            <div class="code-lines" id="code-lines"></div>
+          </div>
+          <div class="minimap" id="minimap" aria-hidden="true"></div>
+          <div class="editor-scanline" aria-hidden="true"></div>
+        </div>
+
+        <div class="editor-footer">
+          <button data-action="toggle-problems"><span class="check-circle"><span data-icon="check"></span></span> 0 problems</button>
+          <button data-action="open-thread"><span data-icon="message"></span> <strong id="thread-count">2</strong> living threads</button>
+          <span class="shared-caret"><i></i> shared caret field active</span>
+          <span class="editor-position" id="editor-position">Ln 12, Col 26</span>
+          <span>UTF-8</span><span>TypeScript</span>
+        </div>
+      </main>
+
+      <aside class="convergence-panel" aria-label="Convergence intelligence">
+        <div class="convergence-head">
+          <div><span class="micro-label"><span class="signal"></span> CONVERGENCE</span><h2>Shared state</h2></div>
+          <button class="icon-button mobile-close" data-action="toggle-convergence" aria-label="Close convergence"><span data-icon="x"></span></button>
+          <button class="icon-button desktop-only" data-action="panel-settings" aria-label="Convergence settings"><span data-icon="sliders"></span></button>
+        </div>
+
+        <section class="health-card">
+          <div class="health-orbit" aria-label="Convergence score 94">
+            <svg viewBox="0 0 92 92">
+              <circle class="orbit-track" cx="46" cy="46" r="38" />
+              <circle class="orbit-progress" id="orbit-progress" cx="46" cy="46" r="38" />
+              <circle class="orbit-inner" cx="46" cy="46" r="29" />
+            </svg>
+            <div><strong id="health-score">94</strong><small>aligned</small></div>
+          </div>
+          <div class="health-copy"><span class="card-kicker">FABRIC HEALTH</span><strong id="health-title">Ready to converge</strong><p id="health-copy">3 compatible layers. No semantic collisions.</p></div>
+        </section>
+
+        <section class="layer-section">
+          <div class="panel-section-title"><span>INTENT LAYERS</span><button data-action="add-layer"><span data-icon="plus"></span> New</button></div>
+          <div class="intent-list" id="intent-list">
+            <button class="intent-card is-selected" data-intent="presence">
+              <span class="intent-color mint"></span>
+              <span class="intent-main"><span class="intent-title"><strong>Presence resilience</strong><em>AM</em></span><small>Retry handoff without cursor drift</small><span class="intent-meta"><span>+18 −4</span><span>2 files</span><span class="intent-ready">ready</span></span></span>
+            </button>
+            <button class="intent-card is-selected" data-intent="latency">
+              <span class="intent-color violet"></span>
+              <span class="intent-main"><span class="intent-title"><strong>Latency veil</strong><em>NO</em></span><small>Speculative local echo under 80ms</small><span class="intent-meta"><span>+31 −7</span><span>4 files</span><span class="intent-ready">ready</span></span></span>
+            </button>
+            <button class="intent-card is-selected" data-intent="checkpoint">
+              <span class="intent-color coral"></span>
+              <span class="intent-main"><span class="intent-title"><strong>Atomic checkpoint</strong><em>SR</em></span><small>Seal consensus as one shared state</small><span class="intent-meta"><span>+22 −9</span><span>3 files</span><span class="intent-ready">ready</span></span></span>
+            </button>
+          </div>
+        </section>
+
+        <section class="blast-section">
+          <div class="panel-section-title"><span>SEMANTIC BLAST RADIUS</span><span class="low-risk">LOW RISK</span></div>
+          <div class="blast-map">
+            <div class="blast-core"><span data-icon="braces"></span></div>
+            <span class="blast-node n1">presence</span><span class="blast-node n2">cursor</span><span class="blast-node n3">transport</span><span class="blast-node n4">runtime</span>
+            <i class="blast-ring r1"></i><i class="blast-ring r2"></i>
+          </div>
+          <div class="blast-stats"><span><strong>9</strong> symbols</span><span><strong>4</strong> modules</span><span><strong>0</strong> collisions</span></div>
+        </section>
+
+        <section class="decision-card" id="decision-card">
+          <div class="decision-top"><span class="decision-icon"><span data-icon="message"></span></span><span><small>LIVING THREAD</small><strong>Should handoff preserve velocity?</strong></span><button data-action="open-thread">View</button></div>
+          <p>“Keep momentum through reconnect, but cap extrapolation at 120ms.”</p>
+          <div class="decision-votes"><span class="tiny-avatars"><i>AM</i><i>NO</i><i>SR</i></span><span><strong>8</strong> aligned</span><span>1 open thought</span></div>
+        </section>
+
+        <button class="converge-button" id="converge-button" data-action="converge">
+          <span class="converge-icon"><span data-icon="merge"></span></span>
+          <span><strong>Converge 3 layers</strong><small>All checks are green</small></span>
+          <span data-icon="arrow-right"></span>
+        </button>
+      </aside>
+
+      <section class="continuum" aria-label="Session continuum">
+        <div class="continuum-head">
+          <div><span class="micro-label">CONTINUUM</span><strong id="continuum-label">Live edge</strong></div>
+          <div class="continuum-controls">
+            <button data-action="step-back" aria-label="Step backward"><span data-icon="skip-back"></span></button>
+            <button data-action="toggle-replay" aria-label="Play session replay"><span data-icon="play" id="replay-icon"></span></button>
+            <button data-action="go-live" class="live-edge"><span class="live-pulse"></span> Live</button>
+          </div>
+        </div>
+        <div class="timeline-wrap">
+          <div class="timeline-track"><div class="timeline-progress" id="timeline-progress"></div></div>
+          <button class="timeline-event mint" style="--at:8%" data-time="24m ago" data-event="Amara opened Presence resilience"><i></i><span>intent opened</span></button>
+          <button class="timeline-event violet" style="--at:29%" data-time="17m ago" data-event="Noor shaped the latency veil"><i></i><span>ghost edit</span></button>
+          <button class="timeline-event amber" style="--at:47%" data-time="11m ago" data-event="Runtime pulse recovered"><i></i><span>tests green</span></button>
+          <button class="timeline-event coral" style="--at:66%" data-time="6m ago" data-event="Soren proposed an atomic checkpoint"><i></i><span>checkpoint</span></button>
+          <button class="timeline-event mint active" style="--at:91%" data-time="now" data-event="12 minds at the live edge"><i></i><span>shared state</span></button>
+          <div class="timeline-cursor" id="timeline-cursor" style="--at:91%"><span>LIVE</span></div>
+          <div class="timeline-ticks"><span>24m</span><span>18m</span><span>12m</span><span>6m</span><span>now</span></div>
+        </div>
+        <div class="runtime-strip">
+          <span><i class="stable"></i> runtime</span>
+          <div class="pulse-bars" id="pulse-bars" aria-label="Runtime stability history"></div>
+          <span class="runtime-value">99.98%</span>
+        </div>
+      </section>
+
+      <footer class="status-bar">
+        <div><span class="status-live"><i></i> FABRIC LIVE</span><span><span data-icon="cloud"></span> synced</span><span><span data-icon="shield"></span> end-to-end encrypted</span></div>
+        <div><span>12 minds / 6 regions</span><span>18ms median</span><button data-action="open-command"><kbd>⌘</kbd><kbd>K</kbd> Ask the room</button></div>
+      </footer>
+
+      <button class="mobile-convergence-button" data-action="toggle-convergence" aria-label="Open convergence panel"><span data-icon="merge"></span><b>3</b></button>
+      <div class="panel-scrim" data-action="close-panels"></div>
+    </div>
+
+    <dialog class="invite-dialog" id="invite-dialog">
+      <form method="dialog">
+        <button class="dialog-close" value="cancel" aria-label="Close"><span data-icon="x"></span></button>
+        <div class="dialog-sigil"><span data-icon="user-plus"></span></div>
+        <span class="dialog-kicker">EXPAND THE FABRIC</span>
+        <h2>Bring minds into the room</h2>
+        <p>They’ll arrive at the same live edge—with your current context, threads, and runtime state intact.</p>
+        <label class="invite-field"><span data-icon="link"></span><input id="invite-link" value="braid.live/helix/session-04" readonly /><button type="button" data-action="copy-invite">Copy link</button></label>
+        <div class="invite-permission"><span><strong>Can shape</strong><small>Guests can edit through intent layers</small></span><button type="button" data-action="permission-menu">Change <span data-icon="chevron"></span></button></div>
+        <div id="device-connect" class="device-connect"></div>
+        <div class="dialog-note"><span data-icon="shield"></span> Connections are peer-to-peer — nothing routes through a server</div>
+      </form>
+    </dialog>
+
+    <dialog class="converge-dialog" id="converge-dialog">
+      <form method="dialog">
+        <button class="dialog-close" value="cancel" aria-label="Close"><span data-icon="x"></span></button>
+        <div class="converge-dialog-head">
+          <div class="dialog-sigil merge"><span data-icon="merge"></span></div>
+          <div><span class="dialog-kicker">CONVERGENCE CHAMBER</span><h2>Weave a shared checkpoint</h2><p>Three compatible intentions become one tested state.</p></div>
+        </div>
+        <div class="fusion-visual" aria-label="Three intent layers converging">
+          <div class="fusion-source mint"><span>AM</span><i></i></div>
+          <div class="fusion-source violet"><span>NO</span><i></i></div>
+          <div class="fusion-source coral"><span>SR</span><i></i></div>
+          <div class="fusion-lines"><i></i><i></i><i></i></div>
+          <div class="fusion-target"><span class="brand-glyph"><i></i><i></i><i></i></span><strong>SHARED</strong></div>
+        </div>
+        <div class="check-grid">
+          <div><span class="check-icon"><span data-icon="check"></span></span><span><strong>148 tests</strong><small>all passing</small></span></div>
+          <div><span class="check-icon"><span data-icon="check"></span></span><span><strong>0 collisions</strong><small>semantic analysis</small></span></div>
+          <div><span class="check-icon"><span data-icon="check"></span></span><span><strong>8 aligned</strong><small>consensus reached</small></span></div>
+        </div>
+        <div class="converge-actions"><button class="cancel-button" value="cancel">Hold layers</button><button type="button" class="confirm-converge" data-action="confirm-converge"><span data-icon="merge"></span> Converge now</button></div>
+      </form>
+    </dialog>
+
+    <div class="command-palette" id="command-palette" hidden>
+      <button class="palette-backdrop" data-action="close-command" aria-label="Close command palette"></button>
+      <div class="palette-card" role="dialog" aria-modal="true" aria-label="Ask the room or run a command">
+        <div class="palette-input-wrap"><span class="palette-spark"><span data-icon="spark"></span></span><input id="command-input" autocomplete="off" placeholder="Ask the room or shape the code…" /><kbd>ESC</kbd></div>
+        <div class="palette-context"><span><span class="live-pulse"></span> 12 minds listening</span><span>Context: spatial-runtime</span></div>
+        <div class="command-results" id="command-results">
+          <button data-command="scope"><span data-icon="target"></span><span><strong>Beam a semantic scope</strong><small>Show every symbol affected by your cursor</small></span><kbd>⌥ S</kbd></button>
+          <button data-command="future"><span data-icon="split"></span><span><strong>Open a parallel future</strong><small>Explore an implementation without splitting the team</small></span></button>
+          <button data-command="replay"><span data-icon="history"></span><span><strong>Replay the last 10 minutes</strong><small>Walk through edits, thoughts, and runtime signals</small></span></button>
+          <button data-command="converge"><span data-icon="merge"></span><span><strong>Converge ready layers</strong><small>Fuse three compatible intentions</small></span><kbd>↵</kbd></button>
+        </div>
+        <div class="palette-footer"><span><kbd>↑</kbd><kbd>↓</kbd> navigate</span><span><kbd>↵</kbd> run</span><span><kbd>esc</kbd> close</span></div>
+      </div>
+    </div>
+
+    <div class="toast-region" id="toast-region" aria-live="polite"></div>
+    <script type="module" src="./app.js?v=1"></script>
+  </body>
+</html>
