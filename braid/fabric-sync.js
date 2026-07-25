@@ -98,12 +98,13 @@ export function mergeFabric(local, remote) {
  * Open the message bus. `onMessage(message)` receives every remote message;
  * `onPeers(peers)` fires whenever the roster changes.
  */
-export function createSync({ room = "helix", identity, onMessage, onPeers } = {}) {
+export function createSync({ room = "helix", identity, onMessage, onPeers, onStream } = {}) {
   const peers = new Map();
   const channels = [];
   let channel = null;
   let connection = null;
   let dataChannel = null;
+  let audioSender = null;
 
   const emitPeers = () => onPeers?.([...peers.values()]);
 
@@ -146,6 +147,23 @@ export function createSync({ room = "helix", identity, onMessage, onPeers } = {}
 
   /* ---------------- WebRTC: a second device, no signalling server ---------------- */
 
+  function prepare(peer) {
+    peer.ontrack = (event) => onStream?.(event.streams[0] ?? new MediaStream([event.track]));
+    try {
+      audioSender = peer.addTransceiver("audio", { direction: "sendrecv" }).sender;
+    } catch {
+      audioSender = null;   // older browsers simply won't carry voice
+    }
+    return peer;
+  }
+
+  /** Swap the live microphone track into the already-negotiated audio lane. */
+  async function attachMic(track) {
+    if (!audioSender) return false;
+    await audioSender.replaceTrack(track ?? null);
+    return true;
+  }
+
   function wireChannel(next) {
     dataChannel = next;
     next.onmessage = (event) => {
@@ -175,7 +193,7 @@ export function createSync({ room = "helix", identity, onMessage, onPeers } = {}
 
   async function createOffer() {
     if (typeof RTCPeerConnection !== "function") throw new Error("This browser cannot open a direct connection.");
-    connection = new RTCPeerConnection({ iceServers: STUN });
+    connection = prepare(new RTCPeerConnection({ iceServers: STUN }));
     wireChannel(connection.createDataChannel("braid"));
     await connection.setLocalDescription(await connection.createOffer());
     await gathered(connection);
@@ -184,7 +202,7 @@ export function createSync({ room = "helix", identity, onMessage, onPeers } = {}
 
   async function acceptOffer(code) {
     if (typeof RTCPeerConnection !== "function") throw new Error("This browser cannot open a direct connection.");
-    connection = new RTCPeerConnection({ iceServers: STUN });
+    connection = prepare(new RTCPeerConnection({ iceServers: STUN }));
     connection.ondatachannel = (event) => wireChannel(event.channel);
     await connection.setRemoteDescription(decode(code));
     await connection.setLocalDescription(await connection.createAnswer());
@@ -206,5 +224,5 @@ export function createSync({ room = "helix", identity, onMessage, onPeers } = {}
     peers.clear();
   }
 
-  return { send, close, peers, sweep, createOffer, acceptOffer, acceptAnswer, get connected() { return peers.size; } };
+  return { send, close, peers, sweep, attachMic, get voiceReady() { return Boolean(audioSender); }, createOffer, acceptOffer, acceptAnswer, get connected() { return peers.size; } };
 }

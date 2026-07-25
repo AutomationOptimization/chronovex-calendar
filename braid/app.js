@@ -12,6 +12,7 @@ import {
   weave,
 } from "./fabric-core.js";
 import { createIdentity, createSync, mergeFabric } from "./fabric-sync.js";
+import { createHuddle } from "./huddle.js";
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -49,6 +50,8 @@ const ICONS = {
   layers: '<path d="m12 3 9 5-9 5-9-5zM3 13l9 5 9-5"/>',
   link: '<path d="M10 13a4 4 0 0 0 6 .5l2-2a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 11a4 4 0 0 0-6-.5l-2 2A4 4 0 0 0 11.7 18l1-1"/>',
   menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+  mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
+  "mic-off": '<path d="M9 9v2a3 3 0 0 0 4.6 2.5M15 11V6a3 3 0 0 0-5.9-.7"/><path d="M5 11a7 7 0 0 0 10.7 6M19 11a7 7 0 0 1-.6 2.8M12 18v3M4 3l16 16"/>',
   merge: '<path d="M7 21V9a5 5 0 0 0 5 5h5"/><circle cx="7" cy="5" r="2.5"/><circle cx="19" cy="14" r="2.5"/><path d="M7 7.5V9"/>',
   message: '<path d="M20 15a3 3 0 0 1-3 3H8l-4 3V6a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3z"/>',
   more: '<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>',
@@ -272,7 +275,7 @@ const state = {
   selected: null,
   composing: null,
   following: null,
-  huddle: false,
+  huddle: { open: false, joined: false, muted: false, level: 0, mic: "idle", speakers: new Map() },
   position: 1,
   playing: false,
   history: [],
@@ -483,6 +486,13 @@ function receive(message) {
     return;
   }
   if (message.type === "hello") { publish(); return; }
+  if (message.type === "huddle") {
+    const payload = message.payload ?? {};
+    if (payload.joined === false) state.huddle.speakers.delete(message.from);
+    else state.huddle.speakers.set(message.from, { ...message.who, ...payload, via: message.via ?? "tab" });
+    renderHuddle();
+    return;
+  }
   if (message.type === "caret") {
     state.remoteCarets.set(message.from, { ...message.payload, who: message.who, seen: Date.now() });
     if (state.mode === "fabric" && isLive() && !state.editing) renderCanvas();
@@ -534,7 +544,16 @@ function ensureLayers() {
 }
 
 function startSync() {
-  sync = createSync({ room: "helix", identity, onMessage: receive, onPeers });
+  sync = createSync({
+    room: "helix",
+    identity,
+    onMessage: receive,
+    onPeers,
+    onStream: (stream) => {
+      const audio = $("#huddle-audio");
+      if (audio) { audio.srcObject = stream; audio.play?.().catch(() => {}); }
+    },
+  });
   timers.push(sync.sweep);
   sync.send("hello");
   timers.push(setInterval(() => {
@@ -1380,11 +1399,105 @@ function toggleBeam() {
   beamSymbol(symbol);
 }
 
-function toggleHuddle() {
-  state.huddle = !state.huddle;
+const mic = createHuddle({
+  onLevel: (level, speaking) => {
+    state.huddle.level = level;
+    paintHuddleLevels();
+    if (sync && state.huddle.joined) sync.send("huddle", { joined: true, muted: state.huddle.muted, level: Math.round(level * 100) / 100, speaking });
+  },
+  onState: (micState) => { state.huddle.mic = micState; renderHuddle(); },
+});
+
+async function toggleHuddle() {
+  if (state.huddle.open) { leaveHuddle(); return; }
+  state.huddle.open = true;
+  renderHuddle();
+  const result = await mic.join();
+  state.huddle.joined = true;
+  if (result.ok) {
+    if (sync?.voiceReady) await sync.attachMic(result.track).catch(() => {});
+    toast("Huddle open — your microphone is live", "amber", "wave");
+  } else if (result.reason === "denied") {
+    toast("Huddle open, microphone blocked — allow it in your browser to be heard", "coral", "wave");
+  } else {
+    toast("Huddle open — this browser can't open a microphone", "violet", "wave");
+  }
+  sync?.send("huddle", { joined: true, muted: false, level: 0 });
+  renderHuddle();
+}
+
+function leaveHuddle() {
+  mic.leave();
+  state.huddle.open = false;
+  state.huddle.joined = false;
+  state.huddle.level = 0;
+  state.huddle.speakers.clear();
+  sync?.send("huddle", { joined: false });
+  sync?.attachMic(null).catch(() => {});
+  renderHuddle();
+  toast("You left the huddle", "violet", "wave");
+}
+
+function toggleMute() {
+  const muted = mic.setMuted(!state.huddle.muted);
+  state.huddle.muted = muted;
+  sync?.send("huddle", { joined: true, muted, level: 0 });
+  renderHuddle();
+  toast(muted ? "Microphone muted" : "Microphone live", muted ? "violet" : "amber", muted ? "mic-off" : "mic");
+}
+
+/** Cheap per-frame update: only the level rings move, never the whole panel. */
+function paintHuddleLevels() {
+  const own = $("#huddle-you .huddle-level");
+  if (own) own.style.setProperty("--level", state.huddle.level.toFixed(3));
+  for (const [id, speaker] of state.huddle.speakers) {
+    const node = $(`.huddle-person[data-peer="${CSS?.escape ? CSS.escape(id) : id}"] .huddle-level`);
+    if (node) node.style.setProperty("--level", String(speaker.level ?? 0));
+  }
+}
+
+function renderHuddle() {
+  const dock = $("#huddle-dock");
+  if (!dock) return;
   const button = $(".huddle-button");
-  if (button) button.classList.toggle("is-live", state.huddle);
-  toast(state.huddle ? "Huddle open — voice over the same caret field" : "Huddle closed", "amber", "wave");
+  if (button) button.classList.toggle("is-live", state.huddle.open);
+  dock.hidden = !state.huddle.open;
+  if (!state.huddle.open) { dock.innerHTML = ""; return; }
+
+  const micLabel = {
+    live: "microphone live",
+    muted: "muted",
+    denied: "microphone blocked by your browser",
+    unsupported: "no microphone in this browser",
+    idle: "opening your microphone…",
+  }[state.huddle.mic] ?? state.huddle.mic;
+
+  const others = [...state.huddle.speakers.entries()].map(([id, speaker]) => `
+    <div class="huddle-person" data-peer="${escapeHTML(id)}">
+      <span class="huddle-level" style="--level:${speaker.level ?? 0}"><i class="mini-avatar ${speaker.tone ?? "violet"}">${escapeHTML(speaker.initials ?? "??")}</i></span>
+      <span><strong>${escapeHTML(speaker.name ?? "Mind")}</strong><small>${speaker.muted ? "muted" : speaker.speaking ? "speaking" : "listening"}</small></span>
+      ${speaker.via === "device" ? `<span class="huddle-voice" title="voice carried over the direct connection">${icon("wave")}</span>` : `<span class="huddle-voice quiet" title="same browser — presence only, no audio">${icon("users")}</span>`}
+    </div>`).join("");
+
+  dock.innerHTML = `
+    <div class="huddle-head">
+      <span class="micro-label"><span class="signal"></span> HUDDLE</span>
+      <button class="icon-button" data-action="huddle" aria-label="Leave huddle">${icon("x")}</button>
+    </div>
+    <div class="huddle-people">
+      <div class="huddle-person" id="huddle-you">
+        <span class="huddle-level" style="--level:${state.huddle.level}"><i class="mini-avatar amber">${escapeHTML(identity.initials)}</i></span>
+        <span><strong>You</strong><small class="mic-${state.huddle.mic}">${escapeHTML(micLabel)}</small></span>
+      </div>
+      ${others || '<p class="huddle-empty">No one else has joined yet. Open this page in another tab, or invite a device for voice.</p>'}
+    </div>
+    <div class="huddle-actions">
+      <button class="pill-button${state.huddle.muted ? "" : " primary"}" data-action="toggle-mute" ${state.huddle.mic === "denied" || state.huddle.mic === "unsupported" ? "disabled" : ""}>
+        ${icon(state.huddle.muted ? "mic-off" : "mic")} ${state.huddle.muted ? "Unmute" : "Mute"}</button>
+      <button class="pill-button" data-action="huddle">Leave</button>
+    </div>
+    <audio id="huddle-audio" autoplay></audio>`;
+  hydrateIcons(dock);
 }
 
 async function exportSealed() {
@@ -1466,7 +1579,7 @@ const COMMANDS = [
   { id: "layers", icon: "layers", title: "Review intent layers", detail: "Every layer's real diff, side by side" },
   { id: "export", icon: "download", title: "Export the woven file", detail: "Download the current file exactly as it reads now" },
   { id: "invite", icon: "user-plus", title: "Invite a mind", detail: "They arrive at this exact live edge" },
-  { id: "huddle", icon: "wave", title: "Toggle the huddle", detail: "Voice over the same shared caret field" },
+  { id: "huddle", icon: "wave", title: "Open or leave the huddle", detail: "Opens your microphone and shows who is talking" },
   { id: "discard", icon: "trash", title: "Discard your intent layer", detail: "Lift everything you've shaped this session" },
 ];
 
@@ -1605,6 +1718,7 @@ function handleAction(action, element) {
     case "use-code": useCode(); break;
     case "permission-menu": toast("Permission set to “Can shape”", "violet", "shield"); break;
     case "huddle": toggleHuddle(); break;
+    case "toggle-mute": toggleMute(); break;
     case "converge": if (allCollisions().length) runConverge(); else openModal($("#converge-dialog")); break;
     case "confirm-converge": closeModal($("#converge-dialog")); runConverge(); break;
     case "toggle-replay":
@@ -1921,4 +2035,4 @@ if (typeof document !== "undefined") {
   else boot();
 }
 
-export { state, boot, render, MY_LAYER, mergeFabric, runConverge, toggleLayer, stopClocks, beginEdit, commitEdit, deleteLine, insertLine, spawnFuture, adoptFuture, COMMANDS };
+export { state, boot, render, toggleHuddle, toggleMute, renderHuddle, MY_LAYER, mergeFabric, runConverge, toggleLayer, stopClocks, beginEdit, commitEdit, deleteLine, insertLine, spawnFuture, adoptFuture, COMMANDS };

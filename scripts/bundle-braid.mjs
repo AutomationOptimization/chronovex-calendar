@@ -10,16 +10,18 @@ const [output = "braid-standalone.html", ...flags] = process.argv.slice(2);
 const fragment = flags.includes("--fragment");
 const read = (file) => readFile(resolve("braid", file), "utf8");
 
-const [html, css, core, sync, app] = await Promise.all([
-  read("index.html"), read("styles.css"), read("fabric-core.js"), read("fabric-sync.js"), read("app.js"),
+const [html, css, core, sync, huddle, app] = await Promise.all([
+  read("index.html"), read("styles.css"), read("fabric-core.js"), read("fabric-sync.js"), read("huddle.js"), read("app.js"),
 ]);
 
 const script = [
   core.replace(/^export /gm, ""),
   sync.replace(/^export /gm, ""),
+  huddle.replace(/^export /gm, ""),
   app
     .replace(/^import\s*\{[\s\S]*?\}\s*from\s*"\.\/fabric-core\.js";\n/m, "")
     .replace(/^import\s*\{[^}]*\}\s*from\s*"\.\/fabric-sync\.js";\n/m, "")
+    .replace(/^import\s*\{[^}]*\}\s*from\s*"\.\/huddle\.js";\n/m, "")
     .replace(/^export \{[^}]*\};?\s*$/m, "")
     .replace(/\bconverge as convergeFabric\b/g, "convergeFabric"),
 ].join("\n");

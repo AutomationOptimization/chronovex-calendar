@@ -836,3 +836,37 @@ dialog p { margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--muted); 
 .device-connect input { font-size: 11px; }
 .device-connect .dialog-note { align-items: flex-start; line-height: 1.5; }
 .device-connect .dialog-note svg { width: 13px; height: 13px; flex: none; margin-top: 1px; }
+
+/* ---------- huddle: real microphone, real levels ---------- */
+.huddle-dock {
+  position: fixed; right: 18px; bottom: 92px; z-index: 44; width: min(88vw, 268px);
+  display: grid; gap: 10px; padding: 13px; border-radius: 16px;
+  background: rgba(13, 18, 28, 0.97); border: 1px solid rgba(var(--amber-rgb), 0.32);
+  box-shadow: var(--shadow); animation: dialog-in 0.22s var(--ease);
+}
+.huddle-head { display: flex; align-items: center; justify-content: space-between; }
+.huddle-head .signal { background: var(--amber); }
+.huddle-people { display: grid; gap: 9px; }
+.huddle-person { display: grid; grid-template-columns: 34px 1fr auto; gap: 9px; align-items: center; }
+.huddle-person strong { display: block; font-size: 12.5px; }
+.huddle-person small { display: block; font-size: 10.5px; color: var(--faint); }
+.huddle-person small.mic-denied, .huddle-person small.mic-unsupported { color: var(--coral); }
+.huddle-person small.mic-live { color: var(--mint); }
+.huddle-level { position: relative; width: 34px; height: 34px; display: grid; place-items: center; }
+.huddle-level::before {
+  content: ""; position: absolute; inset: 0; border-radius: 50%;
+  border: 2px solid var(--amber);
+  transform: scale(calc(0.82 + var(--level, 0) * 0.5));
+  opacity: calc(0.25 + var(--level, 0) * 0.75);
+  transition: transform 90ms linear, opacity 90ms linear;
+}
+.huddle-level .mini-avatar { width: 26px; height: 26px; font-style: normal; }
+.huddle-voice { color: var(--mint); font-size: 14px; }
+.huddle-voice.quiet { color: var(--faint); }
+.huddle-empty { margin: 0; font-size: 11.5px; line-height: 1.5; color: var(--muted); }
+.huddle-actions { display: flex; gap: 7px; }
+.huddle-actions .pill-button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+.huddle-actions .pill-button:disabled { opacity: 0.45; cursor: not-allowed; }
+.huddle-actions svg { width: 13px; height: 13px; }
+#huddle-audio { display: none; }
+@media (max-width: 780px) { .huddle-dock { right: 12px; left: 12px; width: auto; bottom: 84px; } }
