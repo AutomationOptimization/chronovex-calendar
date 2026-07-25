@@ -5,7 +5,7 @@ import { access, readFile } from "node:fs/promises";
 const read = (file) => readFile(new URL(`../braid/${file}`, import.meta.url), "utf8");
 
 test("BRAID ships every entry point the page needs", async () => {
-  await Promise.all(["index.html", "styles.css", "app.js", "fabric-core.js", "fabric-sync.js", "fabric-relay.js", "relay-config.js", "huddle.js", "favicon.svg"].map(
+  await Promise.all(["index.html", "styles.css", "app.js", "fabric-core.js", "fabric-sync.js", "fabric-relay.js", "relay-config.js", "huddle.js", "guide.js", "favicon.svg"].map(
     (file) => access(new URL(`../braid/${file}`, import.meta.url))));
 });
 
@@ -66,4 +66,54 @@ test("the app boots in a DOM and renders the woven fabric", async () => {
     delete global.document;
     window.close();
   }
+});
+
+test("boot ignores anything that is not a document", async () => {
+  const app = await read("app.js");
+  // boot() doubles as a DOMContentLoaded listener, which would hand it an Event.
+  assert.match(app, /DOMContentLoaded",\s*\(\)\s*=>\s*boot\(\)\)/,
+    "the listener must not pass its Event to boot");
+  assert.match(app, /target\?\.nodeType === 9 \? target : null/,
+    "and boot must reject a non-document argument outright");
+});
+
+test("the single-file bundle actually runs, including convergence", async (t) => {
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { readFile, rm } = await import("node:fs/promises");
+  const { JSDOM } = await import("jsdom");
+
+  const out = join(tmpdir(), `braid-bundle-${process.pid}.html`);
+  await promisify(execFile)("node", ["scripts/bundle-braid.mjs", out, "--fragment"], { cwd: process.cwd() });
+  const fragment = await readFile(out, "utf8");
+  t.after(() => rm(out, { force: true }));
+
+  assert.doesNotMatch(fragment, /^\s*import\s/m, "no import statement survives inlining");
+  assert.doesNotMatch(fragment, /^\s*export\s/m, "and no export statement either");
+
+  // jsdom cannot run type=module, so run the identical code as a classic script.
+  const dom = new JSDOM(`<!doctype html><html><head></head><body>${fragment.replace('<script type="module">', "<script>")}</body></html>`,
+    { runScripts: "dangerously", url: "https://artifact.test/", pretendToBeVisual: true });
+  const { window } = dom;
+  const errors = [];
+  window.addEventListener("error", (event) => errors.push(event.message));
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  const doc = window.document;
+  const click = (selector) => {
+    const node = doc.querySelector(selector);
+    assert.ok(node, `expected ${selector} in the bundle`);
+    node.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  };
+
+  assert.ok(doc.querySelectorAll(".code-line").length > 20, "the bundled app renders the fabric");
+
+  // Convergence lives behind an aliased import; inlining once broke exactly this.
+  click("#converge-button");
+  click('[data-action="confirm-converge"]');
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  assert.equal(doc.querySelectorAll("[data-layer]").length, 0, "converging in the bundle really sealed the layers");
+  assert.deepEqual(errors, [], "and the page raised no errors");
+  window.close();
 });

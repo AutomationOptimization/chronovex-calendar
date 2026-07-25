@@ -10,8 +10,8 @@ const [output = "braid-standalone.html", ...flags] = process.argv.slice(2);
 const fragment = flags.includes("--fragment");
 const read = (file) => readFile(resolve("braid", file), "utf8");
 
-const [html, css, core, relay, relayConfig, sync, huddle, app] = await Promise.all([
-  read("index.html"), read("styles.css"), read("fabric-core.js"), read("fabric-relay.js"), read("relay-config.js"), read("fabric-sync.js"), read("huddle.js"), read("app.js"),
+const [html, css, core, relay, relayConfig, sync, huddle, guide, app] = await Promise.all([
+  read("index.html"), read("styles.css"), read("fabric-core.js"), read("fabric-relay.js"), read("relay-config.js"), read("fabric-sync.js"), read("huddle.js"), read("guide.js"), read("app.js"),
 ]);
 
 const script = [
@@ -20,14 +20,17 @@ const script = [
   relay.replace(/^export /gm, ""),
   sync.replace(/^export /gm, "").replace(/^import\s*\{[^}]*\}\s*from\s*"\.\/fabric-relay\.js";\n/m, ""),
   huddle.replace(/^export /gm, ""),
+  guide.replace(/^export /gm, ""),
   app
     .replace(/^import\s*\{[\s\S]*?\}\s*from\s*"\.\/fabric-core\.js";\n/m, "")
     .replace(/^import\s*\{[^}]*\}\s*from\s*"\.\/fabric-sync\.js";\n/m, "")
     .replace(/^import\s*\{[^}]*\}\s*from\s*"\.\/huddle\.js";\n/m, "")
+    .replace(/^import\s*\{[^}]*\}\s*from\s*"\.\/guide\.js";\n/m, "")
     .replace(/^import\s*\{[^}]*\}\s*from\s*"\.\/fabric-relay\.js";\n/m, "")
     .replace(/^import\s*\{[^}]*\}\s*from\s*"\.\/relay-config\.js";\n/m, "")
     .replace(/^export \{[^}]*\};?\s*$/m, "")
-    .replace(/\bconverge as convergeFabric\b/g, "convergeFabric"),
+    // Import aliases vanish with the import statement, so re-create the binding.
+    .replace(/^/, 'const convergeFabric = converge;\n'),
 ].join("\n");
 
 const body = html

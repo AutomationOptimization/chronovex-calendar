@@ -14,6 +14,7 @@ import { createIdentity, createSync, mergeFabric } from "./fabric-sync.js";
 import { newRoomId, resolveRelay } from "./fabric-relay.js";
 import { DEFAULT_RELAY } from "./relay-config.js";
 import { createHuddle } from "./huddle.js";
+import { createGuide } from "./guide.js";
 
 /**
  * The app binds to the document it was booted into. Reaching for a global
@@ -732,6 +733,38 @@ function note(message, bad = false) {
   host.style.color = bad ? "var(--coral)" : "var(--mint)";
 }
 
+/* ------------------------------------------------------------------- guide */
+
+let guide = null;
+
+/** The live guide instance, for tests and for the command palette. */
+const getGuide = () => guide;
+
+/** Everything SHUTTLE reads. Real state only — it has no timers of its own. */
+function guideContext() {
+  const collisions = allCollisions();
+  const myOps = Object.values(state.files).reduce(
+    (total, file) => total + file.ops.filter((op) => op.layer === MY_LAYER).length, 0);
+  return {
+    mode: state.mode,
+    live: isLive(),
+    editing: Boolean(state.editing),
+    selected: state.selected,
+    myOps,
+    collisions: collisions.length,
+    activeSignature: [...state.activeLayers].sort().join(","),
+    layersInFlight: liveLayers().length,
+    baseVersion: state.baseVersion,
+    peers: state.peers.length,
+    threads: state.threads.length,
+    futures: state.futures.length,
+    micState: state.huddle.mic,
+    huddleOpen: state.huddle.open,
+    paletteOpen: Boolean($("#command-palette") && !$("#command-palette").hidden),
+    dialogOpen: Boolean($("dialog[open]")),
+  };
+}
+
 /* --------------------------------------------------------------- rendering */
 
 function render() {
@@ -745,6 +778,7 @@ function render() {
   hydrateIcons();
   save();
   publish();
+  guide?.sync();
 }
 
 function renderRail() {
@@ -878,6 +912,8 @@ function renderFabric() {
       "code-line",
       line.layer ? `layer-${line.layer} tone-${layerById(line.layer)?.tone ?? "violet"}` : "",
       line.collided ? "is-collided" : "",
+      line.change === "edit" ? "is-edited" : line.change === "add" ? "is-added" : "",
+      line.layer === MY_LAYER ? "is-mine" : "",
       state.selected === line.n ? "is-selected" : "",
       beamSymbol ? (beamHit ? "is-beamed" : "is-dimmed") : "",
       editing ? "is-editing" : "",
@@ -1668,6 +1704,7 @@ const COMMANDS = [
   { id: "invite", icon: "user-plus", title: "Invite a mind", detail: "They arrive at this exact live edge" },
   { id: "huddle", icon: "wave", title: "Open or leave the huddle", detail: "Opens your microphone and shows who is talking" },
   { id: "discard", icon: "trash", title: "Discard your intent layer", detail: "Lift everything you've shaped this session" },
+  { id: "walkthrough", icon: "spark", title: "Walk me through BRAID", detail: "Eight steps through the model, using your own edits" },
 ];
 
 let paletteCursor = 0;
@@ -1742,6 +1779,7 @@ function runCommand(id) {
     case "invite": openModal($("#invite-dialog")); break;
     case "huddle": toggleHuddle(); break;
     case "discard": discardMine(); break;
+    case "walkthrough": guide?.start(0); break;
     default: askTheRoom(id);
   }
 }
@@ -1872,6 +1910,9 @@ function handleAction(action, element) {
 
 function onClick(event) {
   const target = event.target;
+
+  const guided = target.closest("[data-guide]");
+  if (guided) { guide?.handle(guided.dataset.guide); return; }
 
   if (state.editing && !target.closest("[data-editor]")) {
     const input = $("[data-editor]");
@@ -2019,6 +2060,12 @@ function onKeydown(event) {
     if (event.key === "Backspace" || event.key === "Delete") { event.preventDefault(); deleteLine(state.selected); return; }
   }
 
+  if (event.key === "Escape" && (guide?.active || guide?.tip)) {
+    event.preventDefault();
+    guide.handle(guide.active ? "skip" : "dismiss-tip");
+    return;
+  }
+
   if (event.key === "Escape") {
     state.composing = null;
     state.selected = null;
@@ -2065,14 +2112,38 @@ const timers = [];
 
 /** Stop the live-fabric clocks — used when the app is torn down or tested. */
 function stopClocks() {
+  guide?.destroy();
+  guide = null;
+  booted = false;
   timers.splice(0).forEach((id) => { clearInterval(id); clearTimeout(id); });
   clearTimeout(publishTimer);
   try { sync?.close(); } catch { /* a half-open transport is fine to abandon */ }
   sync = null;
 }
 
+let booted = false;
+const listeners = [];
+
+/** Unbind everything this instance attached, so booting again is safe. */
+function detach() {
+  stopClocks();
+  for (const [type, handler, options] of listeners.splice(0)) {
+    try { doc?.removeEventListener(type, handler, options); } catch { /* ignore */ }
+  }
+  booted = false;
+}
+
 function boot(target) {
-  doc = target ?? (typeof document !== "undefined" ? document : doc);
+  // Only accept an actual Document; anything else falls back to the global one.
+  const given = target?.nodeType === 9 ? target : null;
+  const next = given ?? (typeof document !== "undefined" ? document : doc);
+  if (booted) {
+    if (next === doc) { render(); return; }   // already running here
+    detach();                                 // moving to a different document
+  }
+  doc = next;
+  booted = true;
+  state.history.length = 0;
   seedHistory();
   load();
   try {
@@ -2093,25 +2164,37 @@ function bootInteractive() {
   try { startSync(); } catch (error) { console.warn("BRAID: collaboration transport unavailable", error); }
   render();
 
-  doc.addEventListener("click", onClick);
-  doc.addEventListener("dblclick", (event) => {
+  const onDoubleClick = (event) => {
     const line = event.target.closest?.(".code-line");
     if (line && state.mode === "fabric") beginEdit(Number(line.dataset.line));
-  });
-  doc.addEventListener("keydown", onKeydown);
-  doc.addEventListener("submit", onSubmit);
+  };
+  for (const [type, handler] of [["click", onClick], ["dblclick", onDoubleClick], ["keydown", onKeydown], ["submit", onSubmit]]) {
+    doc.addEventListener(type, handler);
+    listeners.push([type, handler]);
+  }
   $("#command-input")?.addEventListener("input", (event) => { paletteCursor = 0; renderPalette(event.target.value); });
 
   if (typeof setInterval === "function" && !reduceMotion) {
     timers.push(setInterval(tickReplay, 320));
   }
 
-  timers.push(setTimeout(() => toast("Click a line to shape it — your edits become an intent layer", "amber", "pen"), 1200));
+  guide = createGuide({
+    doc,
+    context: guideContext,
+    storage: storage(),
+    actions: { openMode: (mode) => { if (state.mode !== mode) setMode(mode); }, icon },
+  });
+  guide.mount();
+
+  const reposition = () => guide?.render();
+  win().addEventListener?.("resize", reposition);
+  $("#editor-canvas")?.addEventListener("scroll", reposition, true);
 }
 
 if (typeof document !== "undefined") {
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
+  // Wrapped: an event listener is called with an Event, which is not a document.
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => boot());
   else boot();
 }
 
-export { state, boot, render, receive as receiveMessage, toggleHuddle, toggleMute, renderHuddle, MY_LAYER, mergeFabric, runConverge, toggleLayer, stopClocks, beginEdit, commitEdit, deleteLine, insertLine, spawnFuture, adoptFuture, COMMANDS };
+export { state, boot, render, guideContext, receive as receiveMessage, toggleHuddle, toggleMute, renderHuddle, MY_LAYER, mergeFabric, runConverge, toggleLayer, stopClocks, beginEdit, commitEdit, deleteLine, insertLine, spawnFuture, adoptFuture, COMMANDS, getGuide };

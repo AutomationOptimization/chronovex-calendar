@@ -886,3 +886,81 @@ dialog p { margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--muted); 
 .room-line { display: flex; align-items: center; gap: 9px; padding: 9px 11px; border-radius: 11px; background: rgba(8, 11, 18, 0.6); border: 1px solid var(--line); }
 .room-line code { flex: 1; font: 11.5px var(--mono); color: var(--mint); overflow: hidden; text-overflow: ellipsis; }
 .room-line .signal.cold { background: var(--faint); animation: none; }
+
+/* ---------- SHUTTLE: the guide ---------- */
+.guide-root { position: fixed; inset: 0; z-index: 46; pointer-events: none; }
+.guide-root > * { pointer-events: auto; }
+
+.guide-shuttle { position: relative; width: 20px; height: 20px; flex: none; display: block; }
+.guide-shuttle i {
+  position: absolute; left: 0; right: 0; height: 2px; border-radius: 2px;
+  background: var(--mint); transform-origin: center;
+}
+.guide-shuttle i:nth-child(1) { top: 4px; background: var(--mint); animation: shuttle-weave 3.2s var(--ease) infinite; }
+.guide-shuttle i:nth-child(2) { top: 9px; background: var(--violet); animation: shuttle-weave 3.2s var(--ease) infinite 0.25s; }
+.guide-shuttle i:nth-child(3) { top: 14px; background: var(--amber); animation: shuttle-weave 3.2s var(--ease) infinite 0.5s; }
+@keyframes shuttle-weave {
+  0%, 100% { transform: scaleX(1); opacity: 0.9; }
+  50% { transform: scaleX(0.45) translateX(4px); opacity: 0.5; }
+}
+
+.guide-card {
+  position: fixed; width: 288px; display: grid; gap: 7px; padding: 13px;
+  border-radius: 15px; background: rgba(13, 18, 28, 0.985);
+  border: 1px solid rgba(var(--mint-rgb), 0.32); box-shadow: var(--shadow);
+  animation: dialog-in 0.2s var(--ease);
+}
+.guide-card.is-tip { border-color: rgba(var(--violet-rgb), 0.34); }
+.guide-card.is-offer { border-color: rgba(var(--amber-rgb), 0.34); }
+.guide-head { display: flex; align-items: center; gap: 8px; }
+.guide-count { flex: 1; font: 700 9px var(--mono); letter-spacing: 0.16em; color: var(--faint); text-transform: uppercase; }
+.guide-x { width: 22px; height: 22px; border-radius: 7px; display: grid; place-items: center; color: var(--faint); }
+.guide-x:hover { background: rgba(255, 255, 255, 0.08); color: var(--text); }
+.guide-x svg { width: 12px; height: 12px; }
+.guide-title { font-size: 13.5px; }
+.guide-body { margin: 0; font-size: 12px; line-height: 1.55; color: var(--muted); }
+.guide-concept {
+  margin: 0; padding-left: 9px; font-size: 11px; line-height: 1.5; color: var(--faint);
+  border-left: 2px solid rgba(var(--mint-rgb), 0.35);
+}
+.guide-nudge { margin: 0; font: 11px var(--mono); color: var(--amber); }
+.guide-actions { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+.guide-go {
+  padding: 6px 11px; border-radius: 9px; font-size: 11.5px; font-weight: 600;
+  background: var(--mint); color: #07121a;
+}
+.guide-go:hover { background: #7cf0d2; }
+.guide-skip { margin-left: auto; font-size: 11px; color: var(--faint); }
+.guide-skip:hover { color: var(--text); }
+.guide-waiting {
+  display: inline-flex; align-items: center; gap: 6px;
+  font: 10.5px var(--mono); color: var(--mint);
+}
+.guide-waiting::before {
+  content: ""; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--mint); animation: ping 2.4s infinite;
+}
+
+/* a ring, never a blocking scrim: the control it points at stays clickable */
+.guide-ring {
+  position: fixed; border-radius: 9px; pointer-events: none;
+  border: 1.5px solid rgba(var(--mint-rgb), 0.85);
+  box-shadow: 0 0 0 3px rgba(var(--mint-rgb), 0.14), 0 0 22px rgba(var(--mint-rgb), 0.22);
+  animation: guide-breathe 2.6s var(--ease) infinite;
+}
+@keyframes guide-breathe {
+  50% { box-shadow: 0 0 0 6px rgba(var(--mint-rgb), 0.08), 0 0 26px rgba(var(--mint-rgb), 0.3); }
+}
+
+.guide-dock {
+  position: fixed; left: 16px; bottom: 46px;
+  width: 38px; height: 38px; border-radius: 13px; display: grid; place-items: center;
+  background: rgba(13, 18, 28, 0.96); border: 1px solid var(--line-strong); box-shadow: var(--shadow);
+  opacity: 0.65; transition: opacity 0.2s var(--ease), transform 0.2s var(--ease);
+}
+.guide-dock:hover { opacity: 1; transform: translateY(-1px); }
+
+@media (max-width: 780px) {
+  .guide-card { width: min(92vw, 288px); left: 4vw !important; right: auto; }
+  .guide-dock { left: auto; right: 16px; bottom: 106px; }
+}
