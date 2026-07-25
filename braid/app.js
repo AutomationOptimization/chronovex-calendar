@@ -2,7 +2,6 @@ import {
   blastRadius,
   converge as convergeFabric,
   convergenceScore,
-  createRng,
   diffLines,
   formatAgo,
   fuzzyScore,
@@ -16,7 +15,6 @@ import { createHuddle } from "./huddle.js";
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-const rng = createRng(20260724);
 const reduceMotion = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const STORAGE_KEY = "braid-fabric-v1";
@@ -281,24 +279,42 @@ const state = {
   history: [],
   undoStack: [],
   redoStack: [],
-  carets: [
-    { id: "AM", line: 17, column: 26 },
-    { id: "NO", line: 15, column: 48 },
-    { id: "SR", line: 31, column: 18 },
-  ],
-  ghostEdit: { line: 21, text: "", target: "      speculative: true,", author: "NO" },
-  pulse: Array.from({ length: 44 }, () => 0.5 + rng() * 0.45),
-  minds: 12,
+  ghosts: true,
+  pulse: [],
+  weaveMs: [],
   opCounter: 0,
   tombstones: [],
   baseVersion: 0,
   peers: [],
   remoteCarets: new Map(),
+  remoteGhosts: new Map(),
 };
 
 const identity = createIdentity(storage());
 const MY_LAYER = `mine-${identity.id}`;
 let sync = null;
+
+const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
+
+/**
+ * The pulse is a real measurement: how long it takes to weave every active
+ * layer into the open file, penalised by any collision that would block a
+ * convergence. Nothing here is invented.
+ */
+function recordWeave(ms, woven) {
+  state.weaveMs.push(ms);
+  if (state.weaveMs.length > 44) state.weaveMs.shift();
+  const budget = 8;
+  const speed = Math.max(0.08, Math.min(1, 1 - ms / budget));
+  state.pulse.push(Math.max(0.08, speed - woven.collisions.length * 0.25));
+  if (state.pulse.length > 44) state.pulse.shift();
+}
+
+const medianWeave = () => {
+  if (state.weaveMs.length === 0) return 0;
+  const sorted = [...state.weaveMs].sort((a, b) => a - b);
+  return Math.round(sorted[Math.floor(sorted.length / 2)] * 100) / 100;
+};
 
 const nextOpId = () => `op-${(state.opCounter += 1).toString(36)}`;
 const layerById = (id) => state.layers.find((layer) => layer.id === id);
@@ -493,6 +509,13 @@ function receive(message) {
     renderHuddle();
     return;
   }
+  if (message.type === "ghost") {
+    const payload = message.payload ?? {};
+    if (!payload.text) state.remoteGhosts.delete(message.from);
+    else state.remoteGhosts.set(message.from, { ...payload, who: message.who, seen: Date.now() });
+    if (state.mode === "fabric" && isLive() && !state.editing) renderCanvas();
+    return;
+  }
   if (message.type === "caret") {
     state.remoteCarets.set(message.from, { ...message.payload, who: message.who, seen: Date.now() });
     if (state.mode === "fabric" && isLive() && !state.editing) renderCanvas();
@@ -568,18 +591,23 @@ function renderPeople() {
   const live = state.peers.map((peer) => `
     <button class="avatar ${peer.tone ?? "violet"} is-live" data-peer="${escapeHTML(peer.id)}" title="${escapeHTML(peer.name ?? "Mind")} — connected ${peer.via === "device" ? "by device" : "in another tab"}">
       ${escapeHTML(peer.initials ?? "??")}<span></span></button>`).join("");
-  const simulated = Object.entries(PEOPLE).filter(([id]) => id !== "KC").map(([id, person]) => `
-    <button class="avatar ${person.tone} is-sim" data-person="${escapeHTML(person.name)}" title="${escapeHTML(person.name)} — ${escapeHTML(person.focus)} (session replay)">
-      ${id}<span></span></button>`).join("");
-  stack.innerHTML = `<button class="avatar is-you" data-peer="${escapeHTML(identity.id)}" title="You — ${escapeHTML(identity.name)}">${escapeHTML(identity.initials)}<span></span></button>${live}${simulated}`;
-  const mind = $("#mind-count");
-  if (mind) mind.textContent = String(1 + state.peers.length);
+  stack.innerHTML =
+    `<button class="avatar is-you" data-peer="${escapeHTML(identity.id)}" title="You — ${escapeHTML(identity.name)}">${escapeHTML(identity.initials)}<span></span></button>${live}` +
+    (state.peers.length === 0 ? `<button class="avatar invite-slot" data-action="invite" title="Invite another mind">+</button>` : "");
   const summary = $(".session-summary span:first-child");
-  if (summary) summary.innerHTML = `<strong id="mind-count">${1 + state.peers.length}</strong> ${state.peers.length ? "minds connected" : "mind (you)"}`;
-  const status = $(".status-bar div:last-child span:first-child");
+  if (summary) summary.innerHTML = `<strong id="mind-count">${1 + state.peers.length}</strong> ${state.peers.length === 0 ? "mind — just you" : state.peers.length === 1 ? "minds connected" : "minds connected"}`;
+  const weave = $("#weave-time");
+  if (weave) weave.textContent = state.weaveMs.length ? `${medianWeave()}ms weave` : "measuring…";
+  const statusWeave = $("#status-weave");
+  if (statusWeave) statusWeave.textContent = state.weaveMs.length ? `${medianWeave()}ms median weave` : "";
+  const statusSync = $("#status-sync");
+  if (statusSync) statusSync.textContent = state.peers.length ? `synced with ${state.peers.length}` : "local";
+  const workspaceSync = $("#workspace-sync");
+  if (workspaceSync) workspaceSync.textContent = state.peers.length ? `synced with ${state.peers.length}` : "local only";
+  const status = $("#status-minds");
   if (status) status.textContent = state.peers.length
     ? `${1 + state.peers.length} minds live · ${state.peers.filter((peer) => peer.via === "device").length} by direct link`
-    : "1 mind · open a second tab or invite a device";
+    : "just you · open this page in a second tab to collaborate";
 }
 
 /** Invite dialog: same-browser tabs join themselves, other devices exchange one code each. */
@@ -777,7 +805,9 @@ function highlight(text, beamSymbol) {
 function renderFabric() {
   const { files, active } = view();
   const file = fileOf(state.file, files);
+  const started = now();
   const woven = weave(file.base, file.ops, [...active]);
+  recordWeave(now() - started, woven);
   const beamSymbol = state.beam ? state.beamSymbol : null;
 
   const lines = woven.lines.map((line) => {
@@ -792,8 +822,11 @@ function renderFabric() {
       beamSymbol ? (beamHit ? "is-beamed" : "is-dimmed") : "",
       editing ? "is-editing" : "",
     ].filter(Boolean).join(" ");
-    const ghost = state.ghosts && isLive() && state.file === "presence.ts" && line.n === state.ghostEdit.line && !editing
-      ? `<span class="ghost-text">${escapeHTML(state.ghostEdit.text)}</span>${state.ghostEdit.text ? '<span class="ghost-caret"></span>' : ""}`
+    const remote = state.ghosts && isLive() && !editing
+      ? [...state.remoteGhosts.values()].find((entry) => entry.file === state.file && entry.line === line.n)
+      : null;
+    const ghost = remote
+      ? `<span class="ghost-text" data-who="${escapeHTML(remote.who?.name ?? "a mind")}">${escapeHTML(remote.text)}</span><span class="ghost-caret"></span>`
       : "";
     const body = editing
       ? `<span class="line-input" contenteditable="plaintext-only" spellcheck="false" data-editor="${line.n}">${escapeHTML(state.editing.text)}</span>`
@@ -843,6 +876,10 @@ function renderFabric() {
 function focusEditor() {
   const input = $("[data-editor]");
   if (input) {
+    input.oninput = () => {
+      if (!sync) return;
+      sync.send("ghost", { file: state.file, line: state.editing?.n, text: input.textContent });
+    };
     input.focus();
     const range = document.createRange();
     range.selectNodeContents(input);
@@ -873,17 +910,6 @@ function paintCarets() {
     row.append(marker);
   }
 
-  state.carets.forEach((caret) => {
-    const person = PEOPLE[caret.id];
-    const row = $(`.code-line[data-line="${caret.line}"] .code-text`, host);
-    if (!row) return;
-    const marker = document.createElement("span");
-    marker.className = "remote-caret";
-    marker.dataset.name = person.name;
-    marker.style.background = `var(--${person.tone})`;
-    marker.style.left = `${caret.column * 7.1}px`;
-    row.append(marker);
-  });
 }
 
 function renderLayersView() {
@@ -984,7 +1010,7 @@ function renderThreads() {
 }
 
 function renderPulse() {
-  const health = pulseHealth(state.pulse);
+  const health = pulseHealth(state.pulse);   // uptime here means "weaves that stayed under budget"
   const collisions = allCollisions();
   const spark = state.pulse.map((value) => `<i style="height:${Math.round(value * 100)}%"></i>`).join("");
   const suites = TESTS.map((suite) => {
@@ -994,11 +1020,11 @@ function renderPulse() {
   return `<div class="mode-view">
     <div class="mode-head"><div><h2>Runtime pulse</h2><p>The woven state runs continuously. Every keystroke from every mind is tested against the same fabric.</p></div></div>
     <div class="pulse-grid">
-      <div class="mode-card pulse-stat"><small>UPTIME</small><strong>${health.uptime}%</strong></div>
-      <div class="mode-card pulse-stat"><small>TREND</small><strong>${health.trend}</strong></div>
+      <div class="mode-card pulse-stat"><small>MEDIAN WEAVE</small><strong>${medianWeave()}ms</strong></div>
+      <div class="mode-card pulse-stat"><small>WEAVES MEASURED</small><strong>${state.weaveMs.length}</strong></div>
       <div class="mode-card pulse-stat"><small>COLLISIONS</small><strong style="color:var(--${collisions.length ? "coral" : "mint"})">${collisions.length}</strong></div>
     </div>
-    <div class="mode-card"><span class="card-kicker">STABILITY · LAST 44 WEAVES</span><div class="spark">${spark}</div></div>
+    <div class="mode-card"><span class="card-kicker">LAST ${state.pulse.length} WEAVES OF ${escapeHTML(state.file)} · TALLER IS FASTER</span><div class="spark">${spark}</div></div>
     <div class="mode-card"><span class="card-kicker">SUITES AGAINST THE WOVEN STATE</span>${suites}</div>
     ${collisions.length ? `<div class="mode-card"><span class="card-kicker">BLOCKING</span>${collisions.map((collision) => `<div class="test-row">${icon("x")} ${escapeHTML(collision.file)}:${collision.line + 1} — ${collision.layers.join(" ↔ ")}</div>`).join("")}</div>` : ""}
   </div>`;
@@ -1101,7 +1127,7 @@ function renderContinuum() {
   const bars = $("#pulse-bars");
   if (bars) bars.innerHTML = state.pulse.map((value) => `<i class="${value < 0.4 ? "hot" : ""}" style="height:${Math.round(value * 100)}%"></i>`).join("");
   const value = $(".runtime-value");
-  if (value) value.textContent = `${pulseHealth(state.pulse).uptime}%`;
+  if (value) value.textContent = state.weaveMs.length ? `${medianWeave()}ms weave` : "—";
 }
 
 /* ----------------------------------------------------------------- effects */
@@ -1159,6 +1185,7 @@ function beginEdit(n) {
 function commitEdit(text) {
   const edit = state.editing;
   state.editing = null;
+  sync?.send("ghost", { file: state.file, line: edit?.n, text: "" });
   if (!edit) return;
   const line = lineAt(edit.n);
   if (!line || text === edit.text) { render(); return; }
@@ -1693,7 +1720,9 @@ function handleAction(action, element) {
     case "toggle-ghosts":
       state.ghosts = !state.ghosts;
       render();
-      toast(state.ghosts ? "Ghost edits visible — you can watch minds think" : "Ghost edits hidden", "violet", "ghost");
+      toast(state.ghosts
+        ? "Ghost edits on — you'll see other minds type before they commit"
+        : "Ghost edits off", "violet", "ghost");
       break;
     case "invite": openModal($("#invite-dialog")); break;
     case "copy-invite": {
@@ -1956,25 +1985,6 @@ function onSubmit(event) {
 
 /* ------------------------------------------------------------- live fabric */
 
-function tickGhost() {
-  if (!state.ghosts || !isLive() || state.editing) return;
-  const ghost = state.ghostEdit;
-  if (ghost.text.length < ghost.target.length) ghost.text = ghost.target.slice(0, ghost.text.length + 1);
-  else if (rng() > 0.7) ghost.text = "";
-  if (state.mode === "fabric") renderCanvas();
-}
-
-function tickPresence() {
-  state.carets.forEach((caret) => {
-    caret.column = Math.max(4, Math.min(64, caret.column + Math.round((rng() - 0.5) * 10)));
-    if (rng() > 0.86) caret.line = Math.max(1, caret.line + (rng() > 0.5 ? 1 : -1));
-  });
-  state.pulse.push(Math.max(0.15, Math.min(1, 0.5 + rng() * 0.45 - allCollisions().length * 0.2)));
-  state.pulse.shift();
-  renderContinuum();
-  if (state.mode === "pulse") renderCanvas();
-  else if (state.mode === "fabric" && isLive() && !state.editing) renderCanvas();
-}
 
 function tickReplay() {
   if (!state.playing) return;
@@ -2024,10 +2034,10 @@ function bootInteractive() {
   $("#command-input")?.addEventListener("input", (event) => { paletteCursor = 0; renderPalette(event.target.value); });
 
   if (typeof setInterval === "function" && !reduceMotion) {
-    timers.push(setInterval(tickGhost, 130), setInterval(tickPresence, 2400), setInterval(tickReplay, 320));
+    timers.push(setInterval(tickReplay, 320));
   }
 
-  timers.push(setTimeout(() => toast("Click any line to shape it — your edits become an intent layer", "amber", "pen"), 1200));
+  timers.push(setTimeout(() => toast("Click a line to shape it — your edits become an intent layer", "amber", "pen"), 1200));
 }
 
 if (typeof document !== "undefined") {
@@ -2035,4 +2045,4 @@ if (typeof document !== "undefined") {
   else boot();
 }
 
-export { state, boot, render, toggleHuddle, toggleMute, renderHuddle, MY_LAYER, mergeFabric, runConverge, toggleLayer, stopClocks, beginEdit, commitEdit, deleteLine, insertLine, spawnFuture, adoptFuture, COMMANDS };
+export { state, boot, render, receive as receiveMessage, toggleHuddle, toggleMute, renderHuddle, MY_LAYER, mergeFabric, runConverge, toggleLayer, stopClocks, beginEdit, commitEdit, deleteLine, insertLine, spawnFuture, adoptFuture, COMMANDS };

@@ -313,3 +313,55 @@ test("a denied microphone still lets you sit in the huddle", async () => {
     delete global.AudioContext;
   }
 });
+
+test("nothing types itself into the document", async () => {
+  const { window, done } = await bootApp();
+  try {
+    const read = () => window.document.querySelector("#code-lines").textContent;
+    const before = read();
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    assert.equal(read(), before, "the fabric only changes when someone changes it");
+    assert.doesNotMatch(before, /speculative: true/, "no simulated keystrokes are injected into the code");
+  } finally { done(); }
+});
+
+test("only minds that are actually connected are shown as present", async () => {
+  const { window, done } = await bootApp();
+  try {
+    const stack = window.document.querySelector("#avatar-stack");
+    assert.equal(stack.querySelectorAll(".avatar.is-you").length, 1, "you are present");
+    assert.equal(stack.querySelectorAll(".avatar.is-live").length, 0, "and nobody else is, because nobody else is connected");
+    assert.match(window.document.querySelector(".session-summary").textContent, /1\s*mind — just you/);
+    assert.equal(window.document.querySelectorAll(".remote-caret").length, 0, "no invented cursors drift around the file");
+  } finally { done(); }
+});
+
+test("a peer's unfinished typing shows as a ghost edit with their name", async () => {
+  const { app, window, done } = await bootApp();
+  try {
+    app.receiveMessage({
+      type: "ghost",
+      from: "mind-xyz",
+      who: { name: "Mind XYZ", tone: "violet" },
+      payload: { file: "presence.ts", line: 5, text: "  velocity: number; // still typing" },
+    });
+    const ghost = window.document.querySelector(".ghost-text");
+    assert.ok(ghost, "their in-progress text appears");
+    assert.equal(ghost.dataset.who, "Mind XYZ", "attributed to the person typing it");
+    assert.match(ghost.textContent, /still typing/);
+
+    app.receiveMessage({ type: "ghost", from: "mind-xyz", who: {}, payload: { file: "presence.ts", line: 5, text: "" } });
+    assert.equal(window.document.querySelector(".ghost-text"), null, "and it clears when they finish");
+  } finally { done(); }
+});
+
+test("the runtime pulse is measured from real weaves, not generated", async () => {
+  const { app, click, done } = await bootApp();
+  try {
+    assert.ok(app.state.weaveMs.length > 0, "weaving the open file is timed");
+    assert.ok(app.state.weaveMs.every((ms) => ms >= 0), "every sample is a real duration");
+    const before = app.state.weaveMs.length;
+    click('.file-row[data-file="converge.ts"]');
+    assert.ok(app.state.weaveMs.length > before, "a new weave adds a new measurement");
+  } finally { done(); }
+});

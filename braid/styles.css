@@ -870,3 +870,14 @@ dialog p { margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--muted); 
 .huddle-actions svg { width: 13px; height: 13px; }
 #huddle-audio { display: none; }
 @media (max-width: 780px) { .huddle-dock { right: 12px; left: 12px; width: auto; bottom: 84px; } }
+
+/* real presence only: no simulated collaborators */
+.avatar.invite-slot { background: transparent; border: 1px dashed var(--line-strong); color: var(--faint); font-size: 14px; }
+.avatar.invite-slot:hover { color: var(--text); border-color: var(--muted); }
+.ghost-text { position: relative; }
+.ghost-text::after {
+  content: attr(data-who) " is typing";
+  position: absolute; left: 0; top: -13px; white-space: nowrap;
+  font: 700 8.5px/12px var(--mono); padding: 0 4px; border-radius: 4px;
+  background: var(--violet); color: #0b0710;
+}

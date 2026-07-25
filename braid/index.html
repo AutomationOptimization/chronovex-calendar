@@ -59,7 +59,7 @@
           </button>
           <div class="workspace-state">
             <span><span data-icon="infinity"></span> Branchless</span>
-            <span>synced 18ms</span>
+            <span id="workspace-sync">local only</span>
           </div>
         </div>
 
@@ -145,21 +145,15 @@
         <div class="session-left">
           <button class="mobile-panel-button" data-action="toggle-project" aria-label="Open project explorer"><span data-icon="menu"></span></button>
           <div class="breadcrumbs"><span>helix</span><span data-icon="slash"></span><strong>spatial-runtime</strong></div>
-          <span class="session-chip"><span class="live-pulse"></span> Session 04</span>
+          <span class="session-chip"><span class="live-pulse"></span> Live session</span>
         </div>
         <div class="session-summary" aria-label="Session status">
-          <span><strong id="mind-count">12</strong> minds</span><i></i>
+          <span><strong id="mind-count">1</strong> mind — just you</span><i></i>
           <span><strong id="layer-count">3</strong> intent layers</span><i></i>
-          <span class="runtime-stable"><span data-icon="pulse"></span> runtime stable</span>
+          <span class="runtime-stable"><span data-icon="pulse"></span> <span id="weave-time">measuring…</span></span>
         </div>
         <div class="session-actions">
-          <div class="avatar-stack" id="avatar-stack" aria-label="Active collaborators">
-            <button class="avatar mint" data-person="Amara" title="Amara — presence.ts">AM<span></span></button>
-            <button class="avatar violet" data-person="Noor" title="Noor — IntentLayer.tsx">NO<span></span></button>
-            <button class="avatar coral" data-person="Soren" title="Soren — converge.ts">SR<span></span></button>
-            <button class="avatar amber" data-person="Mika" title="Mika — reviewing">MI<span></span></button>
-            <button class="avatar more" data-action="show-people" title="8 more collaborators">+8</button>
-          </div>
+          <div class="avatar-stack" id="avatar-stack" aria-label="Minds connected right now"></div>
           <button class="huddle-button" data-action="huddle"><span data-icon="wave"></span><span>Huddle</span></button>
           <button class="invite-button" data-action="invite"><span data-icon="user-plus"></span><span>Invite</span></button>
         </div>
