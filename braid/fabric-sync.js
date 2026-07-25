@@ -48,24 +48,32 @@ export function createIdentity(storage) {
  * @returns {{files: object, threads: Array, tombstones: string[], baseVersion: number, changed: boolean}}
  */
 export function mergeFabric(local, remote) {
-  const tombstones = new Set([...(local.tombstones ?? []), ...(remote.tombstones ?? [])]);
+  const localVersion = local.baseVersion ?? 0;
+  const remoteVersion = remote.baseVersion ?? 0;
+  const localTombstones = new Set(local.tombstones ?? []);
+  const tombstones = new Set([...localTombstones, ...(remote.tombstones ?? [])]);
   const files = {};
-  let changed = false;
+  // Causal metadata is state too. A tombstone can arrive before the operation
+  // it removes, and a newer seal can carry byte-identical text. Both still
+  // have to be persisted and relayed or stale peers can resurrect old work.
+  let changed = tombstones.size !== localTombstones.size || remoteVersion > localVersion;
+  const fingerprint = (list) => (list ?? []).map((op) => `${op.id}:${op.rev ?? 0}`).sort().join("|");
 
   const names = new Set([...Object.keys(local.files ?? {}), ...Object.keys(remote.files ?? {})]);
   for (const name of names) {
     const mine = local.files?.[name];
     const theirs = remote.files?.[name];
-    if (!mine) { files[name] = theirs; changed = true; continue; }
-    if (!theirs) { files[name] = mine; continue; }
+    if (!mine) changed = true;
 
     // The sealed text only moves forward, and only on a newer convergence.
-    const takeTheirBase = (remote.baseVersion ?? 0) > (local.baseVersion ?? 0);
+    const takeTheirBase = !mine || Boolean(theirs && remoteVersion > localVersion);
     const base = takeTheirBase ? theirs.base : mine.base;
-    if (takeTheirBase && JSON.stringify(base) !== JSON.stringify(mine.base)) changed = true;
+    if (mine && takeTheirBase && JSON.stringify(base) !== JSON.stringify(mine.base)) changed = true;
 
     const ops = new Map();
-    for (const op of [...mine.ops, ...theirs.ops]) {
+    // Run even one-sided files through the removal set. Copying them directly
+    // would let a stale peer revive an operation that was already tombstoned.
+    for (const op of [...(mine?.ops ?? []), ...(theirs?.ops ?? [])]) {
       if (!op?.id || tombstones.has(op.id)) continue;
       const existing = ops.get(op.id);
       // Same op edited by its own author twice: keep the later revision.
@@ -74,9 +82,8 @@ export function mergeFabric(local, remote) {
     const merged = [...ops.values()].sort((a, b) => (a.at - b.at) || String(a.id).localeCompare(String(b.id)));
     // Compare identities and revisions, not counts: a swap of one op for
     // another would leave the count identical while changing the document.
-    const fingerprint = (list) => list.map((op) => `${op.id}:${op.rev ?? 0}`).sort().join("|");
-    if (fingerprint(merged) !== fingerprint(mine.ops)) changed = true;
-    files[name] = { ...mine, base, ops: merged };
+    if (mine && fingerprint(merged) !== fingerprint(mine.ops)) changed = true;
+    files[name] = { ...(mine ?? theirs), base, ops: merged };
   }
 
   const threads = new Map();
@@ -97,7 +104,7 @@ export function mergeFabric(local, remote) {
     files,
     threads: [...threads.values()],
     tombstones: [...tombstones],
-    baseVersion: Math.max(local.baseVersion ?? 0, remote.baseVersion ?? 0),
+    baseVersion: Math.max(localVersion, remoteVersion),
     changed,
   };
 }
@@ -110,7 +117,7 @@ const VOICE_TIMEOUT = 20000;
  * `onPeers(peers)` fires whenever the roster changes; `onStatus(status)`
  * reports the relay connection.
  */
-export function createSync({ room = "helix", identity, relay, onMessage, onPeers, onStatus, onStream } = {}) {
+export function createSync({ room = "helix", identity, connectionId, relay, onMessage, onPeers, onStatus, onStream } = {}) {
   const peers = new Map();
   const channels = [];
   const voices = new Map();          // peer id -> { connection, sender }
@@ -118,22 +125,28 @@ export function createSync({ room = "helix", identity, relay, onMessage, onPeers
   let relayClient = null;
   let micTrack = null;
   let manual = null;                 // the code-exchange connection, when there is no relay
+  // Author identity survives reloads for attribution; transport identity is
+  // per tab so two tabs sharing localStorage do not discard each other as self.
+  const nonceScope = typeof window !== "undefined" ? window : globalThis;
+  const nonce = nonceScope.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2, 12);
+  const selfId = connectionId ?? `${identity.id}:${nonce}`;
 
   const emitPeers = () => onPeers?.([...peers.values()]);
 
   function note(id, patch, via) {
     const known = peers.get(id);
-    peers.set(id, { ...(known ?? {}), ...patch, id, seen: Date.now(), via: via ?? known?.via ?? "tab" });
+    const authorId = patch.authorId ?? patch.id ?? known?.authorId ?? null;
+    peers.set(id, { ...(known ?? {}), ...patch, authorId, id, seen: Date.now(), via: via ?? known?.via ?? "tab" });
     if (!known) emitPeers();
   }
 
   function receive(message) {
-    if (!message || message.from === identity.id) return;
+    if (!message || message.from === selfId) return;
 
     if (message.type === "bye") { dropPeer(message.from); return; }
 
     if (message.type === "roster") {
-      const minds = (message.payload?.minds ?? []).filter((id) => id !== identity.id);
+      const minds = (message.payload?.minds ?? []).filter((id) => id !== selfId);
       for (const id of minds) note(id, peers.get(id) ?? { name: "Mind", initials: "??" }, "room");
       for (const id of [...peers.keys()]) {
         if (peers.get(id)?.via === "room" && !minds.includes(id)) peers.delete(id);
@@ -176,6 +189,7 @@ export function createSync({ room = "helix", identity, relay, onMessage, onPeers
       url: relay.url,
       room: relay.room,
       identity,
+      mind: selfId,
       onMessage: (message) => receive({ ...message, via: "room" }),
       onStatus,
     });
@@ -185,7 +199,7 @@ export function createSync({ room = "helix", identity, relay, onMessage, onPeers
   }
 
   function send(type, payload, extra = {}) {
-    const message = { type, payload, from: identity.id, who: identity, at: Date.now(), ...extra };
+    const message = { type, payload, from: selfId, who: identity, at: Date.now(), ...extra };
     for (const transport of channels) {
       try { transport.post(message); } catch { /* a closed transport is not fatal */ }
     }
@@ -220,7 +234,7 @@ export function createSync({ room = "helix", identity, relay, onMessage, onPeers
   /** Open voice to a peer. The lexicographically lower id makes the offer. */
   async function callPeer(id) {
     if (typeof RTCPeerConnection !== "function" || voices.has(id)) return;
-    if (identity.id > id) return;                       // they will call us instead
+    if (selfId > id) return;                            // they will call us instead
     const { connection } = newConnection(id);
     const offer = await connection.createOffer();
     await connection.setLocalDescription(offer);

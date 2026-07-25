@@ -1,5 +1,5 @@
 /**
- * SHUTTLE — the guide that carries a thread across the loom.
+ * The guide's brain. Opti is its face and voice; this decides what he says.
  *
  * Two jobs, one module:
  *
@@ -18,6 +18,8 @@
  * and stays gone once dismissed.
  */
 
+import { createOpti } from "./opti.js";
+
 const KEY = "braid-guide-v1";
 
 /* ------------------------------------------------------------------ script */
@@ -30,6 +32,7 @@ const KEY = "braid-guide-v1";
 export const STEPS = [
   {
     id: "shape",
+    line: "step-shape",
     title: "Shape a line",
     body: "Click any line of code, then click it again to type into it.",
     concept: "Nothing is checked out and nothing is locked. You edit the shared file directly.",
@@ -39,6 +42,7 @@ export const STEPS = [
   },
   {
     id: "layer",
+    line: "step-layer",
     title: "That became your layer",
     body: "Your edit did not overwrite the file. It hovers above the same lines everyone else is reading, in your colour.",
     concept: "Branches are replaced by intent layers that coexist on one document.",
@@ -47,6 +51,7 @@ export const STEPS = [
   },
   {
     id: "lift",
+    line: "step-lift",
     title: "Lift someone's intent",
     body: "Click another layer in the Convergence panel. The document re-weaves under you as it leaves.",
     concept: "Any subset of intentions can be read at once. The file is a view, not a fixed text.",
@@ -55,6 +60,7 @@ export const STEPS = [
   },
   {
     id: "collide",
+    line: "step-collide",
     title: "Collide on purpose",
     body: "The ringed line was rewritten by someone else's layer. Edit that one.",
     concept: "Two intentions on one line is a collision, surfaced immediately, not a merge conflict discovered later.",
@@ -64,6 +70,7 @@ export const STEPS = [
   },
   {
     id: "resolve",
+    line: "step-resolve",
     title: "Nothing was lost",
     body: "Both intents are still here, and convergence is blocked until a person decides. Lift one layer, or press ⌘Z.",
     concept: "The fabric refuses to guess. Resolution is a human act, in place, with no branch to reconcile.",
@@ -72,6 +79,7 @@ export const STEPS = [
   },
   {
     id: "converge",
+    line: "step-converge",
     title: "Seal the fabric",
     body: "Converge fuses every compatible layer into one shared state at once — or nothing lands at all.",
     concept: "Convergence is atomic. There is no half-merged repository to recover from.",
@@ -80,6 +88,7 @@ export const STEPS = [
   },
   {
     id: "continuum",
+    line: "step-continuum",
     title: "Rewind the session",
     body: "Click a moment on the continuum at the bottom. The document reassembles exactly as it was then.",
     concept: "History is a state you can stand in, not a list of diffs to read.",
@@ -88,6 +97,7 @@ export const STEPS = [
   },
   {
     id: "room",
+    line: "step-room",
     title: "Bring in another mind",
     body: "Your session is a room. Anyone who opens its link joins this fabric and appears beside you.",
     concept: "The room holds the woven state, so it outlives every browser that was in it.",
@@ -100,36 +110,42 @@ export const STEPS = [
 export const TIPS = [
   {
     id: "first-collision",
+    line: "tip-first-collision",
     title: "Two layers, one line",
     body: "Both edits are held and shown. Convergence stays blocked until someone lifts a layer or changes a line.",
     when: (ctx) => ctx.collisions > 0,
   },
   {
     id: "converge-ready",
+    line: "tip-converge-ready",
     title: "Ready to seal",
     body: "Every layer in flight is compatible. Converging now folds them all into the shared state together.",
     when: (ctx) => ctx.collisions === 0 && ctx.layersInFlight >= 2 && ctx.myOps > 0,
   },
   {
     id: "peer-joined",
+    line: "tip-peer-joined",
     title: "Someone is in the room",
     body: "You are both editing the same fabric now. Their unfinished typing appears as a ghost line before they commit.",
     when: (ctx) => ctx.peers > 0,
   },
   {
     id: "past-is-read-only",
+    line: "tip-past-is-read-only",
     title: "You are in the past",
     body: "This is the document as it actually was. Return to the live edge to shape it again.",
     when: (ctx) => !ctx.live,
   },
   {
     id: "mic-blocked",
+    line: "tip-mic-blocked",
     title: "The huddle has no microphone",
     body: "Your browser blocked it. You can still sit in the huddle and see who is speaking.",
     when: (ctx) => ctx.micState === "denied" || ctx.micState === "unsupported",
   },
   {
     id: "future-open",
+    line: "tip-future-open",
     title: "A future is yours alone",
     body: "Edit it freely — the room is untouched until you collapse it back in as an intent layer.",
     when: (ctx) => ctx.futures > 0,
@@ -178,15 +194,15 @@ export function stepIndexFor(memory, { steps = STEPS } = {}) {
  * @param {Storage|null} options.storage
  * @param {object} options.actions       { openMode, icon }
  */
-export function createGuide({ doc, context, storage, actions = {} } = {}) {
+export function createGuide({ doc, context, storage, voice, actions = {} } = {}) {
   const memory = loadMemory(storage);
-  const icon = actions.icon ?? (() => "");
+  let opti = null;
   let root = null;
   let step = null;           // { index, start }
   let tip = null;
+  let finale = false;
   let mounted = false;
 
-  const win = () => doc?.defaultView ?? null;
   const remember = () => saveMemory(storage, memory);
 
   function mount() {
@@ -194,8 +210,9 @@ export function createGuide({ doc, context, storage, actions = {} } = {}) {
     root = doc.createElement("div");
     root.className = "guide-root";
     root.id = "guide-root";
-    root.setAttribute("aria-live", "polite");
     doc.body.append(root);
+    opti = createOpti({ doc, voice, storage, onAction: handle });
+    opti.mount(root);
     mounted = true;
     sync();
   }
@@ -203,6 +220,7 @@ export function createGuide({ doc, context, storage, actions = {} } = {}) {
   /* ------------------------------- lifecycle ------------------------------ */
 
   function start(index = stepIndexFor(memory)) {
+    finale = false;
     memory.dismissed = false;
     memory.offered = true;
     memory.tourDone = false;
@@ -228,6 +246,8 @@ export function createGuide({ doc, context, storage, actions = {} } = {}) {
 
   function finish() {
     step = null;
+    tip = null;
+    finale = true;
     memory.tourDone = true;
     memory.step = 0;
     remember();
@@ -237,6 +257,7 @@ export function createGuide({ doc, context, storage, actions = {} } = {}) {
   function dismiss() {
     step = null;
     tip = null;
+    finale = false;
     memory.dismissed = true;
     memory.offered = true;
     remember();
@@ -260,6 +281,10 @@ export function createGuide({ doc, context, storage, actions = {} } = {}) {
     if (!mounted) return;
     const ctx = context();
 
+    // Q&A deliberately suspends the walkthrough/tips without destroying their
+    // state. Closing the answer returns to exactly what was underneath it.
+    if (opti?.engaged) { render(); return; }
+
     if (step) {
       const definition = STEPS[step.index];
       const complete = definition.done ? definition.done(ctx, step.start) : false;
@@ -268,9 +293,10 @@ export function createGuide({ doc, context, storage, actions = {} } = {}) {
         openStep(step.index + 1);
         return;
       }
-    } else if (!memory.dismissed) {
+    } else if (!memory.dismissed && !finale) {
       const due = nextTip(ctx, memory);
       if (due && due !== tip) tip = due;
+      if (!due && tip) tip = null;
     }
 
     render();
@@ -287,141 +313,133 @@ export function createGuide({ doc, context, storage, actions = {} } = {}) {
     return rect;
   }
 
-  function place(card, rect) {
-    const view = win();
-    const width = 288;
-    const margin = 14;
-    const viewportWidth = view?.innerWidth ?? 1280;
-    const viewportHeight = view?.innerHeight ?? 800;
-    if (!rect) {
-      card.style.left = `${margin}px`;
-      card.style.bottom = `${margin + 58}px`;
-      return;
-    }
-    // Prefer the side with room, and never cover the anchor itself.
-    let left = rect.right + margin;
-    if (left + width > viewportWidth - margin) left = rect.left - width - margin;
-    if (left < margin) left = Math.min(Math.max(margin, rect.left), viewportWidth - width - margin);
-    let top = rect.top;
-    if (top + 190 > viewportHeight) top = Math.max(margin, viewportHeight - 200);
-    card.style.left = `${Math.round(left)}px`;
-    card.style.top = `${Math.round(top)}px`;
+  function clearRing() {
+    root?.querySelectorAll(".guide-ring").forEach((node) => node.remove());
   }
 
-  function render() {
-    if (!root) return;
-    const ctx = context();
-    root.innerHTML = "";
-
-    if (step) { root.append(stepCard(ctx)); return; }
-    if (tip) { root.append(tipCard()); return; }
-    if (!memory.dismissed && !memory.offered) { root.append(offerCard()); return; }
-    root.append(dockButton());
-  }
-
-  function shuttle() {
-    return `<span class="guide-shuttle" aria-hidden="true"><i></i><i></i><i></i></span>`;
-  }
-
-  function stepCard(ctx) {
-    const definition = STEPS[step.index];
-    const rect = anchorRect(definition.anchor);
-    const card = doc.createElement("div");
-    card.className = "guide-card";
-    card.setAttribute("role", "note");
-    card.innerHTML = `
-      <div class="guide-head">${shuttle()}
-        <span class="guide-count">${step.index + 1} of ${STEPS.length}</span>
-        <button class="guide-x" data-guide="dismiss" aria-label="Close the walkthrough">${icon("x")}</button>
-      </div>
-      <strong class="guide-title">${escape(definition.title)}</strong>
-      <p class="guide-body">${escape(definition.body)}</p>
-      <p class="guide-concept">${escape(definition.concept)}</p>
-      ${definition.mode && ctx.mode !== definition.mode ? `<p class="guide-nudge">Open the Fabric view to continue.</p>` : ""}
-      <div class="guide-actions">
-        ${definition.acknowledge
-          ? `<button class="guide-go" data-guide="advance">${escape(definition.acknowledge)}</button>`
-          : `<span class="guide-waiting">${escape(waitingLabel(definition))}</span>`}
-        <button class="guide-skip" data-guide="skip">Skip</button>
-      </div>`;
-    place(card, rect);
-    if (rect) root.append(ring(rect));
-    return card;
-  }
-
-  function waitingLabel(definition) {
-    return { shape: "Waiting for your edit", lift: "Waiting for a layer to move", collide: "Waiting for a collision",
-      resolve: "Waiting for the collision to clear", converge: "Waiting for a convergence",
-      continuum: "Waiting for you to rewind" }[definition.id] ?? "Waiting for you";
-  }
-
-  function ring(rect) {
+  function drawRing(rect) {
+    clearRing();
+    if (!rect || !root) return;
     const node = doc.createElement("div");
     node.className = "guide-ring";
     node.style.left = `${Math.round(rect.left - 4)}px`;
     node.style.top = `${Math.round(rect.top - 4)}px`;
     node.style.width = `${Math.round(rect.width + 8)}px`;
     node.style.height = `${Math.round(rect.height + 8)}px`;
-    return node;
+    root.append(node);
   }
 
-  function tipCard() {
-    const card = doc.createElement("div");
-    card.className = "guide-card is-tip";
-    card.setAttribute("role", "note");
-    card.innerHTML = `
-      <div class="guide-head">${shuttle()}<span class="guide-count">shuttle</span>
-        <button class="guide-x" data-guide="dismiss-tip" aria-label="Dismiss">${icon("x")}</button></div>
-      <strong class="guide-title">${escape(tip.title)}</strong>
-      <p class="guide-body">${escape(tip.body)}</p>
-      <div class="guide-actions">
-        <button class="guide-go" data-guide="dismiss-tip">Understood</button>
-        <button class="guide-skip" data-guide="dismiss">Stop explaining</button>
-      </div>`;
-    place(card, null);
-    return card;
+  function waitingLabel(definition) {
+    return { shape: "waiting for your edit", lift: "waiting for a layer to move", collide: "waiting for a collision",
+      resolve: "waiting for it to clear", converge: "waiting for a convergence",
+      continuum: "waiting for you to rewind" }[definition.id] ?? "waiting for you";
   }
 
-  function offerCard() {
-    const card = doc.createElement("div");
-    card.className = "guide-card is-offer";
-    card.innerHTML = `
-      <div class="guide-head">${shuttle()}<span class="guide-count">shuttle</span>
-        <button class="guide-x" data-guide="dismiss" aria-label="No thanks">${icon("x")}</button></div>
-      <strong class="guide-title">New to a branchless fabric?</strong>
-      <p class="guide-body">Eight steps, using your own edits. Nothing is performed for you.</p>
-      <div class="guide-actions">
-        <button class="guide-go" data-guide="start">Walk me through it</button>
-        <button class="guide-skip" data-guide="dismiss">No thanks</button>
-      </div>`;
-    place(card, null);
-    return card;
-  }
+  function render() {
+    if (!root || !opti) return;
 
-  function dockButton() {
-    const node = doc.createElement("button");
-    node.className = "guide-dock";
-    node.dataset.guide = "start";
-    node.title = memory.tourDone ? "Run the walkthrough again" : "Open the walkthrough";
-    node.setAttribute("aria-label", node.title);
-    node.innerHTML = shuttle();
-    return node;
+    if (opti.engaged) {
+      clearRing();
+      opti.positionBubble();
+      return;
+    }
+
+    if (step) {
+      const definition = STEPS[step.index];
+      const rect = anchorRect(definition.anchor);
+      drawRing(rect);
+      opti.lookAt(rect);
+      opti.say({
+        line: definition.line,
+        title: definition.title,
+        body: definition.body,
+        concept: definition.concept,
+        count: `${step.index + 1} of ${STEPS.length}`,
+        actions: definition.acknowledge
+          ? [{ id: "advance", kind: "primary", label: definition.acknowledge }, { id: "skip", label: "Skip" }]
+          : [{ kind: "waiting", label: waitingLabel(definition) }, { id: "skip", label: "Skip" }],
+      });
+      return;
+    }
+
+    clearRing();
+
+    if (finale) {
+      opti.lookAt(null);
+      opti.say({
+        line: "tour-done",
+        title: "That's the model",
+        count: "done",
+        closeAction: "close-finale",
+        actions: [{ id: "close-finale", kind: "primary", label: "Thanks" }],
+      });
+      return;
+    }
+
+    if (tip) {
+      opti.lookAt(null);
+      opti.say({
+        line: tip.line,
+        title: tip.title,
+        body: tip.body,
+        count: "opti",
+        tone: "is-tip",
+        actions: [{ id: "dismiss-tip", kind: "primary", label: "Got it" }, { id: "dismiss", label: "Stop explaining" }],
+      });
+      return;
+    }
+
+    if (!memory.dismissed && !memory.offered) {
+      opti.lookAt(null);
+      opti.say({
+        line: memory.tourDone ? "hello-again" : "hello",
+        title: "Hello, I'm Opti",
+        count: "opti",
+        tone: "is-offer",
+        actions: [{ id: "start", kind: "primary", label: "Show me" }, { id: "dismiss", label: "Not now" }],
+      });
+      return;
+    }
+
+    if (memory.dismissed) opti.sleep();
+    else opti.idle();
   }
 
   /* ------------------------------- delegation ----------------------------- */
 
-  function handle(action) {
+  function handle(action, value) {
+    voice?.unlock?.();
     switch (action) {
+      case "poke":
+        if (opti.wasDragged()) return true;       // a drag is not a poke
+        if (opti.engaged) { opti.idle(); render(); } else opti.openAsk();
+        return true;
+      case "open-ask":
+        if (!opti.engaged) opti.openAsk();
+        return true;
+      case "mute": {
+        voice?.setMuted(!voice.muted);
+        opti.refresh();
+        return true;
+      }
+      case "ask": opti.ask(value); return true;
+      case "ask-more": opti.openAsk(); return true;
+      case "close-opti": opti.idle(); render(); opti.focus(); return true;
+      case "close-finale": finale = false; opti.idle(); render(); return true;
       case "start": start(memory.tourDone ? 0 : stepIndexFor(memory)); return true;
       case "advance": advance(); return true;
       case "skip": advance(); return true;
       case "dismiss": dismiss(); return true;
+      case "wake": memory.dismissed = false; remember(); render(); return true;
       case "dismiss-tip": dismissTip(); return true;
       default: return false;
     }
   }
 
   function destroy() {
+    opti?.destroy();
+    opti = null;
+    voice?.destroy?.();
     root?.remove();
     root = null;
     mounted = false;
@@ -430,13 +448,11 @@ export function createGuide({ doc, context, storage, actions = {} } = {}) {
   return {
     mount, sync, render, handle, start, dismiss, destroy,
     get memory() { return memory; },
+    get opti() { return opti; },
+    unlockVoice: () => voice?.unlock(),
     get step() { return step ? { ...STEPS[step.index], index: step.index } : null; },
     get tip() { return tip; },
+    get finale() { return finale; },
     get active() { return Boolean(step); },
   };
-}
-
-function escape(value) {
-  return String(value).replace(/[&<>"']/g, (char) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
 }

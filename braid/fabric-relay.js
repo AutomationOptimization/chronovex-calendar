@@ -53,8 +53,9 @@ export function socketUrl(base, room, mind) {
  * @param {(message: object) => void} options.onMessage
  * @param {(status: string, detail?: object) => void} options.onStatus  offline | connecting | live | retrying
  */
-export function createRelay({ url, room, identity, onMessage, onStatus, WebSocketImpl } = {}) {
+export function createRelay({ url, room, identity, mind, onMessage, onStatus, WebSocketImpl } = {}) {
   const Socket = WebSocketImpl ?? host().WebSocket;
+  const socketMind = mind ?? identity.id;
   let socket = null;
   let attempt = 0;
   let closed = false;
@@ -72,7 +73,7 @@ export function createRelay({ url, room, identity, onMessage, onStatus, WebSocke
     setStatus(attempt === 0 ? "connecting" : "retrying", { attempt });
     let next;
     try {
-      next = new Socket(socketUrl(url, room, identity.id));
+      next = new Socket(socketUrl(url, room, socketMind));
     } catch {
       retry();
       return;

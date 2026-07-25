@@ -15,6 +15,7 @@ import { newRoomId, resolveRelay } from "./fabric-relay.js";
 import { DEFAULT_RELAY } from "./relay-config.js";
 import { createHuddle } from "./huddle.js";
 import { createGuide } from "./guide.js";
+import { createVoice } from "./voice.js";
 
 /**
  * The app binds to the document it was booted into. Reaching for a global
@@ -28,7 +29,7 @@ const $ = (selector, root) => (root ?? doc)?.querySelector(selector) ?? null;
 const $$ = (selector, root) => [...((root ?? doc)?.querySelectorAll(selector) ?? [])];
 const reduceMotion = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 const clone = (value) => JSON.parse(JSON.stringify(value));
-const STORAGE_KEY = "braid-fabric-v1";
+const STORAGE_PREFIX = "braid-fabric-v1";
 // Always the page's own storage — never a host runtime's global of the same name.
 function storage() {
   // A sandboxed iframe throws on this property rather than returning undefined,
@@ -326,6 +327,12 @@ function shareLink() {
   return `${base}#${parts.join("&")}`;
 }
 const MY_LAYER = `mine-${identity.id}`;
+// A browser identity survives reloads, but an operation namespace must not.
+// Otherwise two tabs (or the first edit after a reload) both create `mind-1`
+// and the id-keyed merge silently mistakes distinct edits for one operation.
+const OP_NAMESPACE = newRoomId();
+const fabricStorageKey = () =>
+  `${STORAGE_PREFIX}:${encodeURIComponent(session.url || "local")}:${encodeURIComponent(session.room)}`;
 let sync = null;
 
 const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
@@ -350,7 +357,7 @@ const medianWeave = () => {
   return Math.round(sorted[Math.floor(sorted.length / 2)] * 100) / 100;
 };
 
-const nextOpId = () => `${identity.id}-${(state.opCounter += 1).toString(36)}`;
+const nextOpId = () => `${identity.id}-${OP_NAMESPACE}-${(state.opCounter += 1).toString(36)}`;
 const layerById = (id) => state.layers.find((layer) => layer.id === id);
 const fileOf = (name, files = state.files) => files[name] ?? files["presence.ts"];
 const openThreads = () => state.threads.filter((thread) => !thread.resolved).length;
@@ -486,16 +493,17 @@ function seedHistory() {
 
 function save() {
   try {
-    storage()?.setItem(STORAGE_KEY, JSON.stringify({
+    storage()?.setItem(fabricStorageKey(), JSON.stringify({
       files: state.files, threads: state.threads, futures: state.futures,
       active: [...state.activeLayers], layers: state.layers, tabs: state.tabs, file: state.file,
+      tombstones: state.tombstones, baseVersion: state.baseVersion,
     }));
   } catch { /* storage is a nicety, never a requirement */ }
 }
 
 function load() {
   try {
-    const raw = storage()?.getItem(STORAGE_KEY);
+    const raw = storage()?.getItem(fabricStorageKey());
     if (!raw) return;
     const saved = JSON.parse(raw);
     if (!saved?.files) return;
@@ -506,6 +514,8 @@ function load() {
     state.activeLayers = new Set(saved.active ?? [...state.activeLayers]);
     state.tabs = saved.tabs?.length ? saved.tabs : state.tabs;
     state.file = saved.file ?? state.file;
+    state.tombstones = saved.tombstones ?? [];
+    state.baseVersion = saved.baseVersion ?? 0;
   } catch { /* ignore malformed storage */ }
 }
 
@@ -587,7 +597,7 @@ function ensureLayers() {
     for (const op of file.ops) {
       if (known.has(op.layer)) continue;
       known.add(op.layer);
-      const peer = state.peers.find((item) => op.layer === `mine-${item.id}`);
+      const peer = state.peers.find((item) => op.layer === `mine-${item.authorId ?? item.id}`);
       state.layers.push({
         id: op.layer,
         title: peer ? `${peer.name}'s intent` : `${op.author ?? "Another mind"}'s intent`,
@@ -605,7 +615,14 @@ function startSync() {
     room: session.room,
     identity,
     relay: session.url ? { url: session.url, room: session.room } : null,
-    onStatus: (status) => { state.relay = status; renderPeople(); },
+    onStatus: (status) => {
+      state.relay = status;
+      renderPeople();
+      // A send attempted while offline is intentionally cheap and lossy. On
+      // every successful open/reopen, republish the current full state so the
+      // room cannot miss edits made during the outage.
+      if (status === "live") publish();
+    },
     onMessage: receive,
     onPeers,
     onStream: (stream) => {
@@ -1244,14 +1261,16 @@ function toast(message, tone = "mint", glyph = "check") {
 
 function openModal(dialog) {
   if (!dialog) return;
-  if (typeof dialog.showModal === "function") { if (!dialog.open) dialog.showModal(); return; }
-  dialog.setAttribute("open", "");
+  if (typeof dialog.showModal === "function") { if (!dialog.open) dialog.showModal(); }
+  else dialog.setAttribute("open", "");
+  guide?.sync();
 }
 
 function closeModal(dialog) {
   if (!dialog) return;
   if (typeof dialog.close === "function" && dialog.open) dialog.close();
   else dialog.removeAttribute("open");
+  guide?.sync();
 }
 
 /* ------------------------------------------------------------ editing core */
@@ -1704,7 +1723,8 @@ const COMMANDS = [
   { id: "invite", icon: "user-plus", title: "Invite a mind", detail: "They arrive at this exact live edge" },
   { id: "huddle", icon: "wave", title: "Open or leave the huddle", detail: "Opens your microphone and shows who is talking" },
   { id: "discard", icon: "trash", title: "Discard your intent layer", detail: "Lift everything you've shaped this session" },
-  { id: "walkthrough", icon: "spark", title: "Walk me through BRAID", detail: "Eight steps through the model, using your own edits" },
+  { id: "walkthrough", icon: "spark", title: "Ask Opti to walk me through BRAID", detail: "Eight steps through the model, using your own edits" },
+  { id: "ask-opti", icon: "message", title: "Ask Opti a question", detail: "He explains layers, collisions, converging, the room" },
 ];
 
 let paletteCursor = 0;
@@ -1735,11 +1755,13 @@ function openPalette() {
   if (input) { input.value = ""; setTimeout(() => input.focus(), 30); }
   paletteCursor = 0;
   renderPalette("");
+  guide?.sync();
 }
 
 function closePalette() {
   const palette = $("#command-palette");
   if (palette) palette.hidden = true;
+  guide?.sync();
 }
 
 function renderPalette(query) {
@@ -1780,6 +1802,7 @@ function runCommand(id) {
     case "huddle": toggleHuddle(); break;
     case "discard": discardMine(); break;
     case "walkthrough": guide?.start(0); break;
+    case "ask-opti": guide?.handle("open-ask"); break;
     default: askTheRoom(id);
   }
 }
@@ -1913,6 +1936,7 @@ function onClick(event) {
 
   const guided = target.closest("[data-guide]");
   if (guided) { guide?.handle(guided.dataset.guide); return; }
+  guide?.unlockVoice();
 
   if (state.editing && !target.closest("[data-editor]")) {
     const input = $("[data-editor]");
@@ -2011,6 +2035,12 @@ function onKeydown(event) {
   const paletteOpen = palette && !palette.hidden;
   const editor = $("[data-editor]");
 
+  if (event.key === "Escape" && guide?.opti?.engaged) {
+    event.preventDefault();
+    guide.handle("close-opti");
+    return;
+  }
+
   if (editor && event.target === editor) {
     if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); commitEdit(editor.textContent); return; }
     if (event.key === "Escape") { event.preventDefault(); state.editing = null; render(); return; }
@@ -2078,6 +2108,13 @@ function onKeydown(event) {
 }
 
 function onSubmit(event) {
+  const ask = event.target.closest("[data-opti-ask]");
+  if (ask) {
+    event.preventDefault();
+    guide?.handle("ask", ask.querySelector("input")?.value ?? "");
+    return;
+  }
+
   const composer = event.target.closest("[data-composer]");
   if (composer) {
     event.preventDefault();
@@ -2182,6 +2219,9 @@ function bootInteractive() {
     doc,
     context: guideContext,
     storage: storage(),
+    // Native browser speech is the shipped voice. The collaboration relay has
+    // no pretend TTS route and never receives Opti's prose.
+    voice: createVoice({ storage: storage() }),
     actions: { openMode: (mode) => { if (state.mode !== mode) setMode(mode); }, icon },
   });
   guide.mount();

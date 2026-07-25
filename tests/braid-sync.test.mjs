@@ -53,6 +53,36 @@ test("tombstoned operations are never resurrected by a stale peer", () => {
   assert.deepEqual(merged.tombstones, ["m1"]);
 });
 
+test("causal metadata changes are persisted even when the visible text does not", () => {
+  const local = fabric([]);
+  const withTombstone = fabric([], ["a", "b", "c"], { tombstones: ["future-op"] });
+  const tombstoned = mergeFabric(local, withTombstone);
+  assert.equal(tombstoned.changed, true);
+  assert.deepEqual(tombstoned.tombstones, ["future-op"]);
+  assert.equal(mergeFabric(tombstoned, withTombstone).changed, false, "replaying the metadata is idempotent");
+
+  const withNewVersion = fabric([], ["a", "b", "c"], { baseVersion: 2 });
+  const versioned = mergeFabric(local, withNewVersion);
+  assert.equal(versioned.changed, true, "a newer seal matters even with identical text");
+  assert.equal(versioned.baseVersion, 2);
+  assert.equal(mergeFabric(versioned, withNewVersion).changed, false);
+});
+
+test("tombstones dominate operations in files present on only one side", () => {
+  const localOnly = fabric([{ id: "gone", layer: "mine-a", at: 0, kind: "edit", text: "stale" }]);
+  const remoteRemoval = { files: {}, threads: [], tombstones: ["gone"], baseVersion: 0 };
+  const removed = mergeFabric(localOnly, remoteRemoval);
+  assert.equal(removed.files["presence.ts"].ops.length, 0);
+  assert.equal(removed.changed, true);
+
+  const localRemoval = { files: {}, threads: [], tombstones: ["gone"], baseVersion: 0 };
+  const staleRemoteFile = fabric([{ id: "gone", layer: "mine-b", at: 0, kind: "edit", text: "revived" }]);
+  const imported = mergeFabric(localRemoval, staleRemoteFile);
+  assert.deepEqual(Object.keys(imported.files), ["presence.ts"]);
+  assert.equal(imported.files["presence.ts"].ops.length, 0, "the imported file cannot revive its removed op");
+  assert.equal(mergeFabric(imported, staleRemoteFile).changed, false);
+});
+
 test("a newer convergence moves the sealed text forward; an older one cannot", () => {
   const local = fabric([], ["a", "b", "c"], { baseVersion: 1 });
   const sealed = fabric([], ["sealed"], { baseVersion: 2 });

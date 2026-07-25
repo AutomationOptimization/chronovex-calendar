@@ -5,7 +5,7 @@ import { access, readFile } from "node:fs/promises";
 const read = (file) => readFile(new URL(`../braid/${file}`, import.meta.url), "utf8");
 
 test("BRAID ships every entry point the page needs", async () => {
-  await Promise.all(["index.html", "styles.css", "app.js", "fabric-core.js", "fabric-sync.js", "fabric-relay.js", "relay-config.js", "huddle.js", "guide.js", "favicon.svg"].map(
+  await Promise.all(["index.html", "styles.css", "app.js", "fabric-core.js", "fabric-sync.js", "fabric-relay.js", "relay-config.js", "huddle.js", "guide.js", "opti.js", "opti-lines.js", "voice.js", "favicon.svg"].map(
     (file) => access(new URL(`../braid/${file}`, import.meta.url))));
 });
 

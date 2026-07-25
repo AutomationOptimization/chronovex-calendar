@@ -39,6 +39,31 @@ test("re-sending a state the room already has changes nothing and says nothing",
   assert.equal(echo.room.updatedAt, 1, "and the room's clock does not move");
 });
 
+test("the room persists tombstones and seal versions even without a text change", () => {
+  const seeded = applyMessage(EMPTY_ROOM, stateMessage([]), { now: 1 });
+  const tombstoned = applyMessage(seeded.room, stateMessage([], { tombstones: ["future-op"] }), { now: 2 });
+  assert.equal(tombstoned.changed, true);
+  assert.deepEqual(tombstoned.room.tombstones, ["future-op"]);
+  assert.equal(tombstoned.room.updatedAt, 2);
+  assert.equal(tombstoned.broadcast.type, "state");
+
+  const versioned = applyMessage(tombstoned.room, stateMessage([], {
+    tombstones: ["future-op"],
+    baseVersion: 3,
+  }), { now: 3 });
+  assert.equal(versioned.changed, true);
+  assert.equal(versioned.room.baseVersion, 3);
+  assert.equal(versioned.room.updatedAt, 3);
+
+  const replay = applyMessage(versioned.room, stateMessage([], {
+    tombstones: ["future-op"],
+    baseVersion: 3,
+  }), { now: 4 });
+  assert.equal(replay.changed, false);
+  assert.equal(replay.broadcast, null);
+  assert.equal(replay.room.updatedAt, 3);
+});
+
 test("the stored fabric is what a later visitor receives", () => {
   const seeded = applyMessage(EMPTY_ROOM, stateMessage([{ id: "o1", layer: "mine-a", at: 0, kind: "edit", text: "mine" }]), { now: 1 });
   const snapshot = snapshotOf(seeded.room);
@@ -128,13 +153,14 @@ test("the relay client announces itself, carries messages, and reconnects", asyn
     url: "https://relay.example",
     room: "abc123",
     identity: { id: "mind-x", name: "Mind X" },
+    mind: "mind-x:tab-1",
     onMessage: (message) => seen.push(message),
     onStatus: (status) => statuses.push(status),
     WebSocketImpl: FakeSocket,
   });
 
   assert.equal(sockets.length, 1);
-  assert.match(sockets[0].url, /wss:\/\/relay\.example\/room\/abc123\?mind=mind-x/);
+  assert.match(sockets[0].url, /wss:\/\/relay\.example\/room\/abc123\?mind=mind-x%3Atab-1/);
 
   sockets[0].open();
   assert.deepEqual(statuses, ["connecting", "live"]);
@@ -142,7 +168,7 @@ test("the relay client announces itself, carries messages, and reconnects", asyn
 
   relay.send({ type: "state", payload: { files: {} } });
   assert.equal(sockets[0].sent[1].type, "state");
-  assert.equal(sockets[0].sent[1].who.id, "mind-x", "messages carry who sent them");
+  assert.equal(sockets[0].sent[1].who.id, "mind-x", "messages retain the stable author behind the tab");
 
   sockets[0].deliver({ type: "snapshot", payload: { files: {} } });
   assert.equal(seen[0].type, "snapshot", "the stored fabric arrives on connect");

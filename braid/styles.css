@@ -887,9 +887,81 @@ dialog p { margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--muted); 
 .room-line code { flex: 1; font: 11.5px var(--mono); color: var(--mint); overflow: hidden; text-overflow: ellipsis; }
 .room-line .signal.cold { background: var(--faint); animation: none; }
 
-/* ---------- SHUTTLE: the guide ---------- */
+/* ---------- OPTI: the guide ---------- */
 .guide-root { position: fixed; inset: 0; z-index: 46; pointer-events: none; }
 .guide-root > * { pointer-events: auto; }
+
+.opti {
+  --look-x: 0px; --look-y: 0px;
+  position: fixed; left: 16px; bottom: 44px; z-index: 2;
+  width: 72px; height: 78px; pointer-events: auto;
+}
+.opti-status {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.opti-character {
+  position: absolute; inset: 0; width: 72px; height: 78px; padding: 3px;
+  display: grid; place-items: center; border-radius: 22px; color: var(--text);
+  background: transparent; cursor: grab; touch-action: none; user-select: none;
+  filter: drop-shadow(0 12px 20px rgba(0, 0, 0, 0.34));
+  transition: transform 180ms var(--ease), filter 180ms var(--ease), opacity 180ms var(--ease);
+}
+.opti-character:hover { transform: translateY(-2px); filter: drop-shadow(0 15px 24px rgba(0, 0, 0, 0.4)); }
+.opti-character:active, .opti.is-dragging .opti-character { cursor: grabbing; transform: scale(0.97); }
+.opti-character:focus-visible { outline: 2px solid var(--mint); outline-offset: 3px; }
+.opti-body { width: 64px; height: 64px; overflow: visible; animation: opti-breathe 3.8s var(--ease) infinite; }
+.opti-shell { stroke: rgba(255, 255, 255, 0.17); stroke-width: 1; }
+.opti-strands path { fill: none; stroke-width: 2.4; stroke-linecap: round; opacity: 0.9; }
+.opti-strands path:nth-child(1) { stroke: var(--mint); }
+.opti-strands path:nth-child(2) { stroke: var(--violet); }
+.opti-strands path:nth-child(3) { stroke: var(--amber); }
+.opti-antenna-tip { fill: var(--amber); filter: drop-shadow(0 0 5px rgba(var(--amber-rgb), 0.65)); }
+.opti-eye { fill: #edf7ff; transform-box: fill-box; transform-origin: center; animation: opti-blink 7s ease-in-out infinite; }
+.opti-pupil { fill: #101725; transform: translate(var(--look-x), var(--look-y)); transition: transform 160ms var(--ease); }
+.opti-mouth { display: none; fill: none; stroke: var(--mint); stroke-width: 1.8; stroke-linecap: round; }
+.opti[data-mood="neutral"] .opti-mouth.smile,
+.opti[data-mood="happy"] .opti-mouth.smile,
+.opti[data-mood="proud"] .opti-mouth.smile,
+.opti[data-mood="wave"] .opti-mouth.smile,
+.opti[data-mood="point"] .opti-mouth.smile { display: block; }
+.opti[data-mood="curious"] .opti-mouth.small,
+.opti[data-mood="thinking"] .opti-mouth.small,
+.opti[data-mood="sleep"] .opti-mouth.small { display: block; }
+.opti[data-mood="explain"] .opti-mouth.flat { display: block; }
+.opti[data-mood="alarmed"] .opti-mouth.open { display: block; }
+.opti[data-mood="sad"] .opti-mouth.wobble { display: block; stroke: var(--coral); }
+.opti.is-speaking .opti-mouth { display: none; }
+.opti.is-speaking .opti-mouth.open { display: block; animation: opti-talk 280ms ease-in-out infinite alternate; }
+.opti-arm { opacity: 0; transform-box: fill-box; transform-origin: left center; }
+.opti-arm path { fill: none; stroke: var(--amber); stroke-width: 2.2; stroke-linecap: round; }
+.opti[data-mood="wave"] .opti-arm { opacity: 1; animation: opti-wave 560ms ease-in-out infinite alternate; }
+.opti[data-mood="point"] .opti-arm { opacity: 1; }
+.opti[data-mood="sleep"] .opti-character { opacity: 0.68; transform: translateY(5px) scale(0.94); }
+.opti[data-mood="sleep"] .opti-eye { transform: scaleY(0.12); animation: none; }
+.opti-shadow {
+  position: absolute; left: 15px; right: 15px; bottom: 2px; height: 8px;
+  border-radius: 50%; background: rgba(0, 0, 0, 0.36); filter: blur(4px); z-index: -1;
+}
+.opti-bubble { z-index: 3; max-height: calc(100vh - 24px); overflow: auto; overscroll-behavior: contain; }
+.opti-mute {
+  width: 30px; height: 30px; display: grid; place-items: center; border-radius: 9px;
+  color: var(--muted); font-size: 13px;
+}
+.opti-mute:hover { background: rgba(255, 255, 255, 0.08); color: var(--text); }
+.opti-mute[aria-pressed="true"] { color: var(--coral); background: rgba(var(--coral-rgb), 0.1); }
+.opti-ask { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; margin-top: 3px; }
+.opti-ask input {
+  min-width: 0; height: 34px; padding: 0 10px; border-radius: 9px;
+  border: 1px solid var(--line-strong); background: rgba(5, 8, 14, 0.72); color: var(--text);
+  font: 11.5px var(--sans); outline: none;
+}
+.opti-ask input:focus { border-color: rgba(var(--mint-rgb), 0.7); box-shadow: 0 0 0 2px rgba(var(--mint-rgb), 0.12); }
+.opti-ask .guide-go { min-height: 34px; }
+@keyframes opti-breathe { 50% { transform: translateY(-1.5px) scale(1.015); } }
+@keyframes opti-blink { 0%, 46%, 49%, 100% { transform: scaleY(1); } 47.5% { transform: scaleY(0.08); } }
+@keyframes opti-talk { to { transform: scaleY(0.65); } }
+@keyframes opti-wave { to { transform: rotate(13deg); } }
 
 .guide-shuttle { position: relative; width: 20px; height: 20px; flex: none; display: block; }
 .guide-shuttle i {
@@ -914,7 +986,7 @@ dialog p { margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--muted); 
 .guide-card.is-offer { border-color: rgba(var(--amber-rgb), 0.34); }
 .guide-head { display: flex; align-items: center; gap: 8px; }
 .guide-count { flex: 1; font: 700 9px var(--mono); letter-spacing: 0.16em; color: var(--faint); text-transform: uppercase; }
-.guide-x { width: 22px; height: 22px; border-radius: 7px; display: grid; place-items: center; color: var(--faint); }
+.guide-x { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; color: var(--muted); }
 .guide-x:hover { background: rgba(255, 255, 255, 0.08); color: var(--text); }
 .guide-x svg { width: 12px; height: 12px; }
 .guide-title { font-size: 13.5px; }
@@ -963,4 +1035,6 @@ dialog p { margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--muted); 
 @media (max-width: 780px) {
   .guide-card { width: min(92vw, 288px); left: 4vw !important; right: auto; }
   .guide-dock { left: auto; right: 16px; bottom: 106px; }
+  .opti { left: auto; right: max(12px, env(safe-area-inset-right)); bottom: calc(96px + env(safe-area-inset-bottom)); }
+  .opti-bubble { width: calc(100vw - 24px) !important; left: 12px !important; max-height: min(66vh, 430px); }
 }
